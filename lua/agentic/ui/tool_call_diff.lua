@@ -36,8 +36,8 @@ local Logger = require("agentic.utils.logger")
 local diff_fn = vim.text and vim.text.diff or vim.diff
 
 --- @param lines string[]
---- @return boolean
-local function is_empty_lines(lines)
+--- @return boolean is_empty
+function M.is_empty_lines(lines)
     return #lines == 0 or (#lines == 1 and lines[1] == "")
 end
 
@@ -58,15 +58,15 @@ function M.extract_diff_blocks(opts)
     local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
 
     -- When old_text is nil/empty but file exists, treat as full file replacement
-    if is_empty_lines(old_lines) and #file_lines > 0 then
+    if M.is_empty_lines(old_lines) and #file_lines > 0 then
         old_lines = file_lines
     end
 
-    if is_empty_lines(old_lines) then
+    if M.is_empty_lines(old_lines) then
         table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
     else
         local blocks =
-            M._match_or_substring_fallback(file_lines, old_lines, new_lines)
+            M.match_or_substring_fallback(file_lines, old_lines, new_lines)
 
         if blocks then
             if opts.replace_all then
@@ -309,7 +309,7 @@ end
 --- @param old_lines string[] Old text lines
 --- @param new_lines string[] New text lines
 --- @return agentic.ui.ToolCallDiff.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
-function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
+function M.match_or_substring_fallback(file_lines, old_lines, new_lines)
     local matches = TextMatcher.find_all_matches(file_lines, old_lines)
 
     if #matches > 0 then
@@ -321,6 +321,31 @@ function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
                 new_lines = new_lines,
             }
         end, matches)
+    end
+
+    -- Fallback: prefix boundary matching (ACP may send partial last line)
+    local prefix_matches =
+        TextMatcher.find_all_prefix_boundary_matches(file_lines, old_lines)
+
+    if #prefix_matches > 0 then
+        return vim.tbl_map(function(match)
+            -- Expand partial last line to full file line
+            local expanded_old = vim.list_extend({}, old_lines)
+            local expanded_new = vim.list_extend({}, new_lines)
+            expanded_old[#expanded_old] = expanded_old[#expanded_old]
+                .. match.suffix
+            if #expanded_new > 0 then
+                expanded_new[#expanded_new] = expanded_new[#expanded_new]
+                    .. match.suffix
+            end
+
+            return {
+                start_line = match.start_line,
+                end_line = match.end_line,
+                old_lines = expanded_old,
+                new_lines = expanded_new,
+            }
+        end, prefix_matches)
     end
 
     -- Fallback to substring replacement for single-line cases
