@@ -19,12 +19,9 @@ your terminal.
 Including your MCP servers, commands, SKILLs, and sub-agents, you don't have to
 recreate your configuration to use Agentic.nvim.
 
-You can start your work in Neovim, close it, and continue from the terminal, if
-your provider supports session restoration, or restore previous Neovim sessions
-using Agentic's built-in session persistence feature. Note: Sessions started in
-the terminal cannot be restored in Neovim (Agentic.nvim has its own session
-management separate from providers to maintain compatibility across all
-providers).
+You can start your work in Neovim, close it, and continue from the terminal, or
+restore previous Neovim sessions using Agentic's built-in session persistence
+feature.
 
 There're no hidden prompts or magic happening behind the scenes. Just a Chat
 interface, your colors, and your keymaps.
@@ -39,6 +36,12 @@ interface, your colors, and your keymaps.
   - **Keep you secrets secret**: run `claude /login`, or `gemini auth login`
     once and, if they're working on your Terminal, they will work automatically
     on Agentic.
+- **🧠 Model Switcher** - Switch between available models mid-session
+  (`<localLeader>m` in the chat widget)
+- **🔀 Switch Providers** - Switch between ACP providers mid-conversation
+  without losing chat history (`<localLeader>s` in the chat widget)
+- **♻️ Session Restore** - Restore your session and chat history at any time,
+  for all providers
 - **📝 Context Control** - Add files and text selections to conversation context
   with one keypress
 - **🏞️ Image Support** - Drag-and-drop or paste images and screenshots directly
@@ -62,10 +65,6 @@ interface, your colors, and your keymaps.
 - **ℹ️ Smart Context** - Automatically includes system and project information
   in the first message of each session, so the Agent don't spend time and tokens
   gathering basic info
-- **🔀 Switch Providers** - Switch between ACP providers mid-conversation
-  without losing chat history (`<localLeader>s` in the chat widget)
-- **♻️ Session Restore** - Restore your session and chat history at any time,
-  for all providers
 
 ## 🎥 Showcase
 
@@ -435,6 +434,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<localLeader>p` | n     | Paste image from clipboard in the Prompt buffer                 |
 | `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)                |
 | `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                    |
+| `<localLeader>m` | n     | Switch model without (preserves chat history)                   |
 | `q`              | n     | Close chat widget                                               |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
@@ -461,6 +461,7 @@ your setup:
           },
         },
         switch_provider = "<localLeader>s",  -- Switch ACP provider
+        switch_model = "<localLeader>m",     -- Switch model
       },
 
       -- Keybindings for the prompt buffer only
