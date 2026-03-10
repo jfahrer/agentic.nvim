@@ -8,20 +8,8 @@ conversations, code generation, and permission approvals.
 
 **IMPORTANT:** Prefer retrieval-led reasoning (reading files, searching
 codebase) over pre-training-led reasoning (guessing from memory) for all
-project-specific decisions. Your training data may be outdated—always verify
+project-specific decisions. Your training data may be outdated, always verify
 against actual code.
-
-## 📋 Documentation Scope
-
-**When to add documentation:**
-
-- Module introduces new architectural pattern
-- Utility used across multiple components
-- Violating pattern breaks core functionality
-- Non-obvious tabpage isolation requirements
-
-Read code for implementation details. This guide prevents architectural
-mistakes, not duplicates what's clear in code.
 
 ## 🚨 CRITICAL: No Assumptions - Gather Context First
 
@@ -45,6 +33,7 @@ Before implementing, suggesting, or answering:
 - "I assume this field exists"
 - "This likely works like Y"
 - "Based on similar projects..."
+- "it should ..."
 
 ✅ **DO:**
 
@@ -56,10 +45,10 @@ Before implementing, suggesting, or answering:
 ### Incomplete Solutions Are Unacceptable
 
 - Don't suggest partial implementations expecting me to fill gaps
-- Don't provide solutions with "you might need to..." suggestions
+- Don't provide solutions with "you might need to...", "it should ..."
+  suggestions
 - Don't guess parameter types or return values, read the files and find
   implementation
-- If missing context, gather it first - don't ask user
 
 **CRITICAL:** If you haven't read the relevant code, you don't have enough
 context to make decisions or suggestions!
@@ -176,122 +165,6 @@ When implementing ANY feature:
   - Always use: `BufHelpers.keymap_set(bufnr, "n", "key", fn)`
   - NEVER use global keymaps that affect all tabpages
 
-### Class Design Guidelines: creating and modifying
-
-- **Minimize class properties** - Only include properties that:
-  - Are accessed by external code (other modules/classes)
-  - Are part of the public API
-  - Need to be accessed by subclasses
-
-- **Use visibility prefixes for encapsulation** - Control what external code can
-  access:
-
-  **Visibility levels (configured in `.luarc.json`):**
-  - `_*`: **Private** - Hidden from external consumers (applies to class
-    methods/fields ONLY)
-  - `__*`: **Protected** - Visible to subclasses
-  - No prefix: **Public** - Visible everywhere
-
-  **IMPORTANT:** Module-level local functions and variables do NOT need `_`
-  prefix:
-  - ✅ `local function helper()` - correct (already private by `local` scope)
-  - ❌ `local function _helper()` - incorrect (redundant `_` prefix)
-  - ✅ `local config = {}` - correct
-  - ❌ `local _config = {}` - incorrect (redundant `_` prefix)
-  - ✅ `function MyClass:_private_method()` - correct (class method needs `_`)
-  - ✅ `@field _private_field` - correct (class field needs `_`)
-
-  ```lua
-  -- ❌ Bad: Unnecessary public exposure of `counter` property, not used externally
-  --- @class MyClass
-  --- @field counter number
-  local MyClass = {}
-  MyClass.__index = MyClass
-
-  function MyClass:new()
-      return setmetatable({ counter = 0 }, self)
-  end
-
-  -- ✅ Good: Proper visibility control
-  --- @class MyClass
-  local MyClass = {}
-  MyClass.__index = MyClass
-
-  function MyClass:new()
-      return setmetatable({
-        -- Counter is internal state, not exposed publicly
-        _counter = 0
-      }, self)
-  end
-
-  --- @protected
-  function MyClass:__protected_method()
-      self._counter = self._counter + 1
-  end
-
-  --- Module-level helper functions (no underscore prefix needed)
-  local function format_value(val)
-      return tostring(val)
-  end
-
-  --- @class Child : MyClass
-  function Child:use_parent_state()
-      self:__protected_method()
-  end
-  ```
-
-  **Note:** The `@private` annotation is NOT necessary for private class methods
-  - LuaLS infers privacy from the `_` prefix automatically
-  - Only use `@protected` for protected methods (`__*`, luals limitation)
-
-- **Document intent with LuaCATS** - Use visibility annotations:
-
-  ```lua
-  --- @class MyClass
-  --- @field public_field string Public API
-  --- @field __protected_field table For subclasses
-  --- @field _private_field number Internal only
-  ```
-
-- **Regular cleanup** - When adding new code, review class definitions and
-  remove:
-  - Unused properties
-  - Properties that were needed during development but are no longer used
-  - Properties that could be local variables instead
-
-## Utility Modules
-
-### Logger (`lua/agentic/utils/logger.lua`)
-
-Debug logging utility controlled by `Config.debug` setting.
-
-**Public Methods:**
-
-- **`Logger.notify(msg, level, opts)`** - Safe wrapper around `vim.notify`
-  - Prevents "fast context is active" errors via `vim.schedule`
-  - Falls back to `print()` if `vim.notify` fails
-  - **Default level:** `vim.log.levels.WARN`
-  - **ALWAYS use this instead of `vim.notify` directly**
-  - Signature:
-    `Logger.notify(msg: string, level?: vim.log.levels, opts?: table)`
-  - Examples:
-    - `Logger.notify("Session created")` - Uses default WARN level
-    - `Logger.notify("Session created", vim.log.levels.INFO)` - Explicit level
-
-- **`Logger.debug(...)`** - Print debug messages that can be retrieved with the
-  command `:messages`
-  - Only outputs when `Config.debug = true`
-  - Accepts multiple arguments (strings or tables)
-  - Automatically includes timestamp, caller module, and line number
-  - Tables are formatted with `vim.inspect()`
-  - Example: `Logger.debug("Session created", session_id)`
-
-- **`Logger.debug_to_file(...)`** - Append debug messages to log file
-  - Only writes when `Config.debug = true`
-  - Log file location: `~/.cache/nvim/agentic_debug.log` (macOS/Linux)
-  - Same formatting as `Logger.debug()`
-  - Example: `Logger.debug_to_file("Complex state:", state_table)`
-
 **Important Notes:**
 
 - 🚨 **NEVER use `vim.notify` directly** - Always use `Logger.notify` to avoid
@@ -302,94 +175,6 @@ Debug logging utility controlled by `Config.debug` setting.
   `Config.debug` setting
 
 ## Code Style
-
-### Lua Class Pattern
-
-**Basic class structure:**
-
-```lua
---- @class Animal
-local Animal = {}
-Animal.__index = Animal
-
-function Animal:new()
-    self = setmetatable({}, self)
-    return self
-end
-
-function Animal:move()
-    print("Animal moves")
-end
-```
-
-**Key points:**
-
-- Set `__index` to `self` for inheritance
-- Use `setmetatable` to create instances
-- Return the instance from constructor
-
-**Method definition syntax:**
-
-- `function Class:method()` - Instance method, receives `self` implicitly
-  - Called as: `instance:method()` or `instance.method(instance)`
-  - Use for methods that need access to instance state
-
-- `function Class.method()` - Module function, static, does NOT receive `self`
-  - Called as: `Class.method()` or `instance.method()` (both work, but no
-    `self`)
-  - Use for utility functions, constructors, or static helpers
-
-#### Inheritance Pattern
-
-**Class setup (module-level):**
-
-```lua
-local Parent = {}
-Parent.__index = Parent
-
---- @class Child : Parent
-local Child = setmetatable({}, { __index = Parent })
-Child.__index = Child
-```
-
-**Constructor with parent initialization:**
-
-```lua
-function Parent:new(name)
-    local instance = {
-        name = name,
-        parent_state = {}
-    }
-    return setmetatable(instance, self)
-end
-
-function Child:new(name, extra)
-    -- Call parent constructor with Parent class
-    local instance = Parent.new(Parent, name)
-
-    -- Add child-specific state
-    instance.child_state = extra
-
-    -- Re-metatable to child class for proper inheritance chain
-    return setmetatable(instance, Child)
-end
-```
-
-**Critical rules:**
-
-- **Always pass parent class explicitly:** `Parent.new(Parent, ...)` not
-  `Parent.new(self, ...)`
-- **Re-assign metatable to child class** after parent initialization
-- **Inheritance chain:** `instance → Child → Parent`
-
-**Calling parent methods:**
-
-```lua
-function Child:move()
-    Parent.move(self)  -- Explicit parent method call
-    print("Child-specific movement")
-end
-```
 
 ### LuaCATS Annotations
 
@@ -508,7 +293,7 @@ end
 - Do NOT provide meaningful parameter and return descriptions, unless requested
 - Group related annotations together (class fields, function params, returns)
 
-## Development & Linting
+## Development, Testing & Linting
 
 ### Agentic.nvim Plugin Requirements
 
@@ -562,6 +347,14 @@ for _, item in ipairs(items) do
     end
 end
 ```
+
+### Testing
+
+When creating, editing, or reviewing tests, always load the tests instructions
+it will contain folder structure, files location, and test framework usage, and
+how to run them.
+
+**See `@tests/AGENTS.md` for complete testing guide.**
 
 ### 🚨 MANDATORY: Post-Change Validation for Lua Files
 
@@ -652,14 +445,6 @@ project root:
   entire file instead of reading multiple chunks (avoids loops of reading trying
   to find info)
 
-### Testing
-
-When creating, editing, or reviewing tests, always load the tests instructions
-it will contain folder structure, files location, and test framework usage, and
-how to run them.
-
-**See `@tests/AGENTS.md` for complete testing guide.**
-
 ### Type Checking
 
 `make luals` runs Lua Language Server headless diagnosis across all files in the
@@ -676,21 +461,7 @@ project and provides comprehensive type checking.
 **For more targets and implementation details:** Read the `Makefile` at the
 project root
 
-### Tool overrides:
-
-Override default tool paths if needed:
-
-```bash
-make NVIM=/path/to/nvim luals
-make LUALS=/path/to/lua-language-server luals
-make SELENE=/path/to/selene selene
-```
-
-**Note:** The `lua/agentic/acp/acp_client.lua` file contains critical type
-annotations for Lua Language Server support. These annotations should **never**
-be removed, only updated when the underlying types change.
-
-### Configuration & User Documentation
+### Configuration & User Facing Documentation
 
 #### Config File Changes
 
@@ -709,253 +480,8 @@ plugin.
    - The new highlight group in the code example
    - A new row in the "Available Highlight Groups" table
 
-### Provider System
+### ACP and clients, adapters, and providers
 
-#### ACP Providers (Agent Client Protocol)
-
-This plugin spawn **external CLI tools** as subprocesses and communicate via the
-Agent Client Protocol:
-
-- **Requirements**: External CLI tools must be installed by the user, we don't
-  install them for security reasons.
-  - `claude-agent-acp` for Claude
-  - `gemini` for Gemini
-  - `codex-acp` for Codex
-  - `opencode` for OpenCode
-  - `cursor-agent-acp` for Cursor Agent
-  - `auggie` for Augment Code
-  - `vibe-acp` for Mistral Vibe
-
-NOTE: Install instructs are in the README.md
-
-##### Provider adapters:
-
-Each provider has a dedicated adapter in `lua/agentic/acp/adapters/`:
-
-- `claude_agent_acp_adapter.lua` - Claude Agent ACP adapter
-- `gemini_acp_adapter.lua` - Gemini ACP adapter
-- `codex_acp_adapter.lua` - Codex ACP adapter
-- `opencode_acp_adapter.lua` - OpenCode ACP adapter
-- `cursor_acp_adapter.lua` - Cursor Agent ACP adapter
-- `auggie_acp_adapter.lua` - Auggie ACP adapter
-- `mistral_vibe_acp_adapter.lua` - Mistral Vibe ACP adapter
-
-These adapters implement provider-specific message formatting, tool call
-handling, and protocol quirks.
-
-**CRITICAL:** When adding a new ACP provider, update this documentation
-
-##### ACP provider configuration:
-
-```lua
-acp_providers = {
-  ["claude-agent-acp"] = {
-    name = "Claude Agent ACP",             -- Display name
-    command = "claude-agent-acp",          -- CLI command to spawn
-    env = {                                -- Environment variables
-      NODE_NO_WARNINGS = "1",
-      IS_AI_TERMINAL = "1",
-    },
-  },
-  ["gemini-acp"] = {
-    name = "Gemini ACP",
-    command = "gemini",
-    args = { "--experimental-acp" },       -- CLI arguments
-    env = {
-      NODE_NO_WARNINGS = "1",
-      IS_AI_TERMINAL = "1",
-    },
-  },
-}
-```
-
-#### ACP Protocol Documentation and schema
-
-The ACP documentation can be found at:
-
-- Complete Schema: https://agentclientprotocol.com/protocol/schema.md
-- Overview: https://agentclientprotocol.com/protocol/overview.md
-- Initialization: https://agentclientprotocol.com/protocol/initialization.md
-- Session Setup: https://agentclientprotocol.com/protocol/session-setup.md
-- https://agentclientprotocol.com/protocol/session-config-options.md
-- Prompt Turn: https://agentclientprotocol.com/protocol/prompt-turn.md
-- Content: https://agentclientprotocol.com/protocol/content.md
-- Tool Calls: https://agentclientprotocol.com/protocol/tool-calls
-- File System: https://agentclientprotocol.com/protocol/file-system.md
-- Terminals: https://agentclientprotocol.com/protocol/terminals.md
-- Agent Plan: https://agentclientprotocol.com/protocol/agent-plan.md
-- Session Modes: https://agentclientprotocol.com/protocol/session-modes.md
-- Slash Commands: https://agentclientprotocol.com/protocol/slash-commands.md
-- Extensibility: https://agentclientprotocol.com/protocol/extensibility.md
-- Transports: https://agentclientprotocol.com/protocol/transports.md
-
-#### ACP architectural limitations:
-
-- **No partial acceptance of file changes:** Users must accept or reject the
-  entire file's changes as a unit. The ACP protocol is async and transactional
-  (all-or-nothing tool calls). Implementing partial acceptance would require
-  complex workarounds (e.g., auto-accepting then partially reverting) which adds
-  significant complexity. This feature is deferred/out of scope.
-
-#### Message flow and tool call lifecycle
-
-Required reading for working on adapters, `MessageWriter`, `SessionManager`, or
-`PermissionManager`.
-
-##### Event pipeline (top to bottom)
-
-```
-Provider subprocess (external CLI)
-  | stdio: newline-delimited JSON-RPC
-  v
-ACPTransport      -- parses JSON, calls callbacks.on_message()
-  |
-  v
-ACPClient         -- routes by message type (notification vs response)
-  |  adapter override point: __handle_tool_call,
-  |  __handle_tool_call_update, __build_tool_call_update
-  v
-SessionManager    -- registered as subscriber per session_id
-  |  routes by sessionUpdate type
-  |  (see "Session update routing" below)
-  v
-MessageWriter     -- writes to chat buffer, tracks tool call state
-PermissionManager -- queues permission prompts, manages keymaps
-ChatHistory       -- accumulates messages for persistence
-```
-
-##### Session update routing
-
-`ACPClient` receives `session/update` notifications. The `sessionUpdate` field
-determines routing:
-
-| `sessionUpdate` value   | Routed to                                  |
-| ----------------------- | ------------------------------------------ |
-| `"tool_call"`           | adapter `__handle_tool_call` → subscriber  |
-| `"tool_call_update"`    | adapter `__handle_tool_call_update` → sub  |
-| `"agent_message_chunk"` | `MessageWriter:write_message_chunk()`      |
-| `"agent_thought_chunk"` | `MessageWriter:write_message_chunk()`      |
-| `"plan"`                | `TodoList.render()`                        |
-| `"request_permission"`  | `PermissionManager` (queued, sequential)   |
-| others                  | `subscriber.on_session_update()` (generic) |
-
-##### Tool call lifecycle
-
-Tool calls go through **3 phases**. `MessageWriter` tracks each via
-`tool_call_blocks[tool_call_id]`, persisting state across all phases.
-
-**Phase 1 — `tool_call` (initial)**
-
-```
-Provider sends "tool_call"
-  -> Adapter builds ToolCallBlock { tool_call_id, kind, argument, status, body?, diff? }
-  -> subscriber.on_tool_call(block)
-  -> MessageWriter:write_tool_call_block(block)
-     1. Renders header + body/diff lines to buffer
-     2. Creates range extmark (NS_TOOL_BLOCKS) as position anchor
-     3. Creates decoration extmarks (borders, status icon)
-     4. Stores block in tool_call_blocks[id]
-```
-
-**Phase 2 — `tool_call_update` (one or more)**
-
-```
-Provider sends "tool_call_update"
-  -> Adapter builds ToolCallBase { tool_call_id, status, body?, diff? }
-     (only CHANGED fields needed — MessageWriter merges)
-  -> subscriber.on_tool_call_update(partial)
-  -> MessageWriter:update_tool_call_block(partial)
-     1. Looks up tracker = tool_call_blocks[id]
-     2. Deep-merges via tbl_deep_extend("force", tracker, partial)
-     3. Appends body (if both old and new exist and differ)
-     4. Locates block position via range extmark
-     5. Diff already rendered: refresh decorations + status only
-        (content frozen to prevent flicker)
-     6. Diff is NEW: replace buffer lines, re-render everything
-```
-
-**Phase 3 — final `tool_call_update` with terminal status**
-
-```
-Same as Phase 2, but status = "completed" | "failed"
-  -> Visual status icon updates to final state
-  -> If "failed": PermissionManager removes pending request
-```
-
-##### Key design rules for adapters
-
-- **Updates are partial:** Only send what changed. MessageWriter merges onto the
-  existing tracker via `tbl_deep_extend`.
-- **Diffs are immutable after first render:** Once a diff is written to the
-  buffer, content is frozen. Only status/decorations refresh on subsequent
-  updates.
-- **Body accumulates:** Multiple updates with different body content get
-  concatenated with `---` dividers, not replaced.
-- **Extmarks as position anchors:** Range extmark in `NS_TOOL_BLOCKS`
-  auto-adjusts when buffer content shifts. Single source of truth for block
-  position.
-
-##### Permission flow (interleaved with tool calls)
-
-```
-Provider sends "session/request_permission"
-  -> SessionManager: opens diff preview in editor window (if kind = "diff")
-  -> PermissionManager:add_request(request, callback)
-     -> Queues request (sequential — one prompt at a time)
-     -> Renders permission buttons in chat buffer
-     -> Sets up buffer-local keymaps (1,2,3,4)
-  -> User presses key
-     -> Sends result back to provider via callback
-     -> Clears diff preview
-     -> Dequeues next permission if any
-```
-
-##### Adapter override points
-
-Each provider adapter can override these **protected** methods on `ACPClient`:
-
-| Method                        | Default behavior                          |
-| ----------------------------- | ----------------------------------------- |
-| `__handle_tool_call`          | Builds ToolCallBlock from standard fields |
-| `__build_tool_call_update`    | Builds ToolCallBase with status + body    |
-| `__handle_tool_call_update`   | Calls build then notifies subscriber      |
-| `__handle_request_permission` | Sends result back to provider             |
-
-Override when the provider sends data in non-standard fields (e.g. `rawInput`,
-`rawOutput`), needs synthetic events (Gemini synthesizes `tool_call` from
-permission request), or skips events (Gemini doesn't send cancel updates on
-rejection).
-
-### Neovim Documentation Files and help docs
-
-**IMPORTANT**: For dealing with neovim native features and APIs, refer to the
-official docs.
-
-**CRITICAL**: Do NOT run `nvim --headless` or any other `nvim` command to read
-help documentation. Use direct file access instead.
-
-**Why:** Running `nvim` commands can hang, cause race conditions, or interfere
-with development environment.
-
-#### Neovim Documentation Lookup Strategy:
-
-Always prefer reading local documentation files directly from the Neovim runtime
-path, because they reflect the exact version installed on my system.
-
-Common path patterns after discovery:
-
-- **macOS (Homebrew):**
-  - Runtime docs: `/opt/homebrew/Cellar/neovim/*/share/nvim/runtime/doc/`
-  - Note: We don't need the exact version, just use the wildcard `*` to match
-    the installed version
-- **Linux (Snap):** `/snap/nvim/current/usr/bin/nvim`
-  - Runtime docs: `/snap/nvim/current/usr/share/nvim/runtime/doc/`
-
-**If local lookup fails:** Use GitHub raw URLs (least preferred)
-
-```
-https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc/<doc-name>.txt
-```
-
-**Tip:** Do not assume a file contains what you need, use `rg`, or `grep` on the
-`runtime/doc` folder to find the file containing needed info.
+Read @lua/agentic/acp/AGENTS.md when working with ACP adapters, permission
+requests, messages sent and received, tool call flows, and formatting on the
+chat widget, or adding a new adapter to a new ACP provider.
