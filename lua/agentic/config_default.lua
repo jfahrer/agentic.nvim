@@ -41,6 +41,18 @@
 --- @field prompt table<string, agentic.UserConfig.KeymapValue>
 --- @field diff_preview table<string, string>
 
+--- @alias agentic.UserConfig.FoldState
+--- | "expanded"
+--- | "collapsed"
+
+--- @class agentic.UserConfig.ToolCallFolds
+--- @field initial_state agentic.UserConfig.FoldState
+--- @field by_kind table<string, agentic.UserConfig.FoldState>
+
+--- @class agentic.UserConfig.Folds
+--- @field thoughts { initial_state: agentic.UserConfig.FoldState }
+--- @field tool_calls agentic.UserConfig.ToolCallFolds
+
 --- Window options passed to nvim_set_option_value
 --- Overrides default options (wrap, linebreak, winfixbuf, winfixheight)
 --- @alias agentic.UserConfig.WinOpts table<string, any>
@@ -276,6 +288,18 @@ local ConfigDefault = {
     --- @field threshold integer Lines from bottom to trigger auto-scroll (default: 10)
     auto_scroll = {
         threshold = 10,
+    },
+
+    --- Configure initial fold state for chat block types
+    --- @type agentic.UserConfig.Folds
+    folds = {
+        thoughts = {
+            initial_state = "expanded",
+        },
+        tool_calls = {
+            initial_state = "expanded",
+            by_kind = {},
+        },
     },
 
     --- Show diff preview for edit tool calls in the buffer

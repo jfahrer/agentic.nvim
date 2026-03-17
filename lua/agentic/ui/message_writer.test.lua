@@ -377,6 +377,460 @@ describe("agentic.ui.MessageWriter", function()
         end)
     end)
 
+    describe("thought chunks", function()
+        it(
+            "tracks a streamed thought block as one collapsible region",
+            function()
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = { type = "text", text = "first line" },
+                })
+
+                local first_block = writer._thought_block
+                assert.is_not_nil(first_block)
+                --- @cast first_block agentic.ui.ChatFoldBlock
+                assert.equal(0, first_block.start_row)
+                assert.equal(0, first_block.end_row)
+
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = { type = "text", text = "\nsecond line" },
+                })
+
+                assert.is_not_nil(writer._thought_block)
+                local second_block = writer._thought_block
+                --- @cast second_block agentic.ui.ChatFoldBlock
+                assert.equal(first_block.id, second_block.id)
+                assert.equal(first_block.start_row, second_block.start_row)
+                assert.equal(1, second_block.end_row)
+                assert.equal("agent_thought_chunk", writer._last_message_type)
+            end
+        )
+
+        it(
+            "adds thought highlight extmarks for streamed thought lines",
+            function()
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = { type = "text", text = "first line" },
+                })
+
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = { type = "text", text = "\nsecond line" },
+                })
+
+                local ns_id =
+                    vim.api.nvim_get_namespaces().agentic_thought_highlights
+                local extmarks = vim.api.nvim_buf_get_extmarks(
+                    bufnr,
+                    ns_id,
+                    { 0, 0 },
+                    { 1, 0 },
+                    { details = true }
+                )
+
+                assert.equal(2, #extmarks)
+                assert.equal(0, extmarks[1][2])
+                assert.equal(1, extmarks[2][2])
+                assert.equal("AgenticThought", extmarks[1][4].hl_group)
+                assert.equal("AgenticThought", extmarks[2][4].hl_group)
+            end
+        )
+
+        it(
+            "finalizes the active thought block when a full agent message is written",
+            function()
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = {
+                        type = "text",
+                        text = "first line\nsecond line",
+                    },
+                })
+
+                local active_block = writer._thought_block
+                assert.is_not_nil(active_block)
+                --- @cast active_block agentic.ui.ChatFoldBlock
+
+                writer:write_message({
+                    sessionUpdate = "agent_message_chunk",
+                    content = { type = "text", text = "final message" },
+                })
+
+                assert.is_nil(writer._thought_block)
+
+                local ChatFolds = require("agentic.ui.chat_folds")
+                local blocks = ChatFolds.get_blocks(bufnr)
+
+                assert.equal(1, #blocks)
+                local block = blocks[1]
+                assert.equal(active_block.id, block.id)
+                assert.equal(0, block.start_row)
+                assert.equal(1, block.end_row)
+            end
+        )
+
+        it(
+            "adds the same blank-line separation before write_message after a thought",
+            function()
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = {
+                        type = "text",
+                        text = "first line\nsecond line",
+                    },
+                })
+
+                writer:write_message({
+                    sessionUpdate = "agent_message_chunk",
+                    content = { type = "text", text = "final message" },
+                })
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+                assert.equal("first line", lines[1])
+                assert.equal("second line", lines[2])
+                assert.equal("", lines[3])
+                assert.equal("final message", lines[4])
+                assert.equal("", lines[5])
+                assert.equal("", lines[6])
+            end
+        )
+
+        it(
+            "resets last message type after finalizing through write_message",
+            function()
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = { type = "text", text = "first line" },
+                })
+
+                writer:write_message({
+                    sessionUpdate = "agent_message_chunk",
+                    content = { type = "text", text = "full message" },
+                })
+
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_message_chunk",
+                    content = { type = "text", text = " streamed" },
+                })
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+                assert.equal(5, #lines)
+                assert.equal("", lines[2])
+                assert.equal("full message", lines[3])
+                assert.equal("", lines[4])
+                assert.equal(" streamed", lines[5])
+                assert.equal("agent_message_chunk", writer._last_message_type)
+            end
+        )
+
+        it(
+            "finalizes the active thought block before writing a tool call",
+            function()
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = {
+                        type = "text",
+                        text = "first line\nsecond line",
+                    },
+                })
+
+                local active_block = writer._thought_block
+                assert.is_not_nil(active_block)
+                --- @cast active_block agentic.ui.ChatFoldBlock
+
+                writer:write_tool_call_block({
+                    tool_call_id = "thought-transition-tool",
+                    status = "pending",
+                    kind = "execute",
+                    argument = "ls",
+                    body = { "output" },
+                })
+
+                assert.is_nil(writer._thought_block)
+
+                local ChatFolds = require("agentic.ui.chat_folds")
+                local blocks = ChatFolds.get_blocks(bufnr)
+
+                assert.equal(2, #blocks)
+                local block = blocks[1]
+                assert.equal(active_block.id, block.id)
+                assert.equal(0, block.start_row)
+                assert.equal(1, block.end_row)
+            end
+        )
+
+        it(
+            "registers an active thought block even without a later transition",
+            function()
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = {
+                        type = "text",
+                        text = "first line\nsecond line",
+                    },
+                })
+
+                local active_block = writer._thought_block
+                assert.is_not_nil(active_block)
+                --- @cast active_block agentic.ui.ChatFoldBlock
+
+                local ChatFolds = require("agentic.ui.chat_folds")
+                local blocks = ChatFolds.get_blocks(bufnr)
+
+                assert.equal(1, #blocks)
+                local block = blocks[1]
+                assert.equal(active_block.id, block.id)
+                assert.equal(0, block.start_row)
+                assert.equal(1, block.end_row)
+            end
+        )
+
+        it("keeps thought state isolated per buffer", function()
+            local other_bufnr = vim.api.nvim_create_buf(false, true)
+            local other_winid = vim.api.nvim_open_win(other_bufnr, true, {
+                relative = "editor",
+                width = 80,
+                height = 40,
+                row = 0,
+                col = 0,
+            })
+            local other_writer = MessageWriter:new(other_bufnr)
+
+            local ok, err = pcall(function()
+                writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = {
+                        type = "text",
+                        text = "first line\nsecond line",
+                    },
+                })
+
+                local ns_id =
+                    vim.api.nvim_get_namespaces().agentic_thought_highlights
+                local ChatFolds = require("agentic.ui.chat_folds")
+
+                local first_extmarks = vim.api.nvim_buf_get_extmarks(
+                    bufnr,
+                    ns_id,
+                    { 0, 0 },
+                    { -1, -1 },
+                    { details = true }
+                )
+                local second_extmarks = vim.api.nvim_buf_get_extmarks(
+                    other_bufnr,
+                    ns_id,
+                    { 0, 0 },
+                    { -1, -1 },
+                    { details = true }
+                )
+
+                local first_blocks = ChatFolds.get_blocks(bufnr)
+                local second_blocks = ChatFolds.get_blocks(other_bufnr)
+
+                assert.equal(2, #first_extmarks)
+                assert.equal(0, #second_extmarks)
+                assert.equal(1, #first_blocks)
+                assert.equal(0, #second_blocks)
+
+                other_writer:write_message_chunk({
+                    sessionUpdate = "agent_thought_chunk",
+                    content = { type = "text", text = "other thought" },
+                })
+
+                second_extmarks = vim.api.nvim_buf_get_extmarks(
+                    other_bufnr,
+                    ns_id,
+                    { 0, 0 },
+                    { -1, -1 },
+                    { details = true }
+                )
+                second_blocks = ChatFolds.get_blocks(other_bufnr)
+
+                assert.equal(1, #second_extmarks)
+                assert.equal(1, #second_blocks)
+                assert.are_not.equal(first_blocks[1].id, second_blocks[1].id)
+            end)
+
+            if vim.api.nvim_win_is_valid(other_winid) then
+                vim.api.nvim_win_close(other_winid, true)
+            end
+            if vim.api.nvim_buf_is_valid(other_bufnr) then
+                vim.api.nvim_buf_delete(other_bufnr, { force = true })
+            end
+
+            if not ok then
+                error(err, 0)
+            end
+        end)
+    end)
+
+    describe("tool call folds", function()
+        it(
+            "registers tool calls as collapsible blocks with per-kind state",
+            function()
+                writer:write_tool_call_block({
+                    tool_call_id = "tool-1",
+                    status = "pending",
+                    kind = "read",
+                    argument = "lua/agentic/ui/message_writer.lua",
+                    body = { "line 1", "line 2" },
+                })
+
+                local ChatFolds = require("agentic.ui.chat_folds")
+                local blocks = ChatFolds.get_blocks(bufnr)
+
+                assert.equal(1, #blocks)
+                assert.equal("tool_call", blocks[1].type)
+                assert.equal("read", blocks[1].kind)
+                assert.equal("pending", blocks[1].status)
+                assert.equal(
+                    "lua/agentic/ui/message_writer.lua",
+                    blocks[1].summary
+                )
+                assert.equal(
+                    ChatFolds.get_initial_state("tool_call", "read"),
+                    blocks[1].initial_state
+                )
+            end
+        )
+
+        it("refreshes stored tool fold status and summary on update", function()
+            writer:write_tool_call_block({
+                tool_call_id = "tool-1",
+                status = "pending",
+                kind = "read",
+                argument = "lua/agentic/ui/message_writer.lua",
+                body = { "line 1" },
+            })
+
+            writer:update_tool_call_block({
+                tool_call_id = "tool-1",
+                status = "completed",
+                body = { "line 1", "line 2", "line 3" },
+            })
+
+            local ChatFolds = require("agentic.ui.chat_folds")
+            local blocks = ChatFolds.get_blocks(bufnr)
+
+            assert.equal(1, #blocks)
+            assert.equal("completed", blocks[1].status)
+            assert.equal("lua/agentic/ui/message_writer.lua", blocks[1].summary)
+        end)
+
+        it(
+            "anchors the first tool call in an empty buffer to the rendered header row",
+            function()
+                writer:write_tool_call_block({
+                    tool_call_id = "tool-empty-1",
+                    status = "pending",
+                    kind = "read",
+                    argument = "line1\nline2.lua",
+                    body = { "line 1", "line 2" },
+                })
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+                local ChatFolds = require("agentic.ui.chat_folds")
+                local blocks = ChatFolds.get_blocks(bufnr)
+
+                assert.equal(" read(line1\\nline2.lua) ", lines[1])
+                assert.equal("Read 2 lines", lines[2])
+                assert.equal("", lines[3])
+                assert.equal(1, #blocks)
+                assert.equal(0, blocks[1].start_row)
+                assert.equal(2, blocks[1].end_row)
+                assert.equal("line1\\nline2.lua", blocks[1].summary)
+            end
+        )
+
+        it(
+            "updates the first tool call in an empty buffer without duplicating the header",
+            function()
+                writer:write_tool_call_block({
+                    tool_call_id = "tool-empty-2",
+                    status = "pending",
+                    kind = "read",
+                    argument = "line1\nline2.lua",
+                    body = { "line 1" },
+                })
+
+                writer:update_tool_call_block({
+                    tool_call_id = "tool-empty-2",
+                    status = "completed",
+                    body = { "line 1", "line 2", "line 3" },
+                })
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+                local ChatFolds = require("agentic.ui.chat_folds")
+                local blocks = ChatFolds.get_blocks(bufnr)
+
+                assert.equal(" read(line1\\nline2.lua) ", lines[1])
+                assert.equal("Read 7 lines", lines[2])
+                assert.are_not.equal(" read(line1\\nline2.lua) ", lines[2])
+                assert.equal(1, #blocks)
+                assert.equal(0, blocks[1].start_row)
+                assert.equal(2, blocks[1].end_row)
+                assert.equal("completed", blocks[1].status)
+                assert.equal("line1\\nline2.lua", blocks[1].summary)
+            end
+        )
+
+        it(
+            "anchors permission buttons directly after a tool call without an extra gap",
+            function()
+                writer:write_tool_call_block({
+                    tool_call_id = "tool-permission-1",
+                    status = "pending",
+                    kind = "read",
+                    argument = "lua/agentic/ui/message_writer.lua",
+                    body = { "line 1" },
+                })
+
+                local button_start_row, button_end_row, option_mapping =
+                    writer:display_permission_buttons("tool-permission-1", {
+                        {
+                            optionId = "allow-once",
+                            name = "Allow once",
+                            kind = "allow_once",
+                        },
+                        {
+                            optionId = "reject-once",
+                            name = "Reject once",
+                            kind = "reject_once",
+                        },
+                    })
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+                local prompt_row
+                local separator_count = 0
+
+                for idx, line in ipairs(lines) do
+                    if line == "### Waiting for your response: " then
+                        prompt_row = idx
+                        break
+                    end
+                end
+
+                assert.is_not_nil(prompt_row)
+                --- @cast prompt_row integer
+
+                for idx = 4, prompt_row - 1 do
+                    if lines[idx] == "" then
+                        separator_count = separator_count + 1
+                    end
+                end
+
+                assert.equal(0, separator_count)
+                assert.equal(prompt_row - 2, button_start_row)
+                assert.is_true(button_end_row >= button_start_row)
+                assert.equal("allow-once", option_mapping[1])
+                assert.equal("reject-once", option_mapping[2])
+            end
+        )
+    end)
+
     describe("_prepare_block_lines", function()
         local FileSystem
         local read_stub

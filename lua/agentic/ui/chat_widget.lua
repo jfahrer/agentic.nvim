@@ -1,6 +1,7 @@
 local Config = require("agentic.config")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local DiffPreview = require("agentic.ui.diff_preview")
+local ChatFolds = require("agentic.ui.chat_folds")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local WidgetLayout = require("agentic.ui.widget_layout")
@@ -71,12 +72,23 @@ end
 function ChatWidget:show(opts)
     opts = opts or {}
 
+    local previous_chat_winid = self.win_nrs.chat
+    local had_chat_window = previous_chat_winid ~= nil
+        and vim.api.nvim_win_is_valid(previous_chat_winid)
+
     WidgetLayout.open({
         tab_page_id = self.tab_page_id,
         buf_nrs = self.buf_nrs,
         win_nrs = self.win_nrs,
         focus_prompt = opts.focus_prompt,
     })
+
+    local chat_window_was_recreated = self.win_nrs.chat ~= nil
+        and (not had_chat_window or self.win_nrs.chat ~= previous_chat_winid)
+
+    if chat_window_was_recreated then
+        ChatFolds.setup_window(self.buf_nrs.chat, self.win_nrs.chat)
+    end
 end
 
 --- @param layouts agentic.UserConfig.Windows.Position[]|nil

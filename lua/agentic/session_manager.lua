@@ -6,6 +6,7 @@
 
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
+local ChatFolds = require("agentic.ui.chat_folds")
 local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local DiagnosticsList = require("agentic.ui.diagnostics_list")
@@ -782,6 +783,8 @@ function SessionManager:_cancel_session()
         -- Otherwise, it clears selections and files when opening for the first time
         self.agent:cancel_session(self.session_id)
         self.widget:clear()
+        self.message_writer:reset()
+        ChatFolds.clear(self.widget.buf_nrs.chat)
         self.todo_list:clear()
         self.file_list:clear()
         self.code_selection:clear()

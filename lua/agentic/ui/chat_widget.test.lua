@@ -1,13 +1,46 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local ChatFolds = require("agentic.ui.chat_folds")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local MessageWriter = require("agentic.ui.message_writer")
 
 describe("agentic.ui.ChatWidget", function()
     --- @type agentic.ui.ChatWidget
     local ChatWidget
 
     ChatWidget = require("agentic.ui.chat_widget")
+
+    --- @param widget agentic.ui.ChatWidget
+    local function add_collapsed_thought_fold(widget)
+        ChatFolds.upsert_block(widget.buf_nrs.chat, "thought:test", {
+            type = "thought",
+            start_row = 0,
+            end_row = 2,
+            summary = "reasoning hidden",
+            initial_state = "collapsed",
+        })
+
+        vim.bo[widget.buf_nrs.chat].modifiable = true
+        vim.api.nvim_buf_set_lines(
+            widget.buf_nrs.chat,
+            0,
+            -1,
+            false,
+            { "thought 1", "thought 2", "thought 3", "after" }
+        )
+        vim.bo[widget.buf_nrs.chat].modifiable = false
+    end
+
+    --- @param winid integer
+    --- @param line integer|nil
+    --- @return integer foldclosed
+    local function get_foldclosed(winid, line)
+        line = line or 1
+        return vim.api.nvim_win_call(winid, function()
+            return vim.fn.foldclosed(line)
+        end)
+    end
 
     --- Helper to populate a dynamic buffer with content
     --- @param widget agentic.ui.ChatWidget
@@ -148,6 +181,157 @@ describe("agentic.ui.ChatWidget", function()
                     vim.api.nvim_win_get_tabpage(widget.win_nrs.input)
                 )
             end)
+
+            it("configures folds for the chat window", function()
+                widget:show()
+
+                local winid = widget.win_nrs.chat
+                assert.equal("expr", vim.wo[winid].foldmethod)
+                assert.truthy(vim.wo[winid].foldexpr:find("chat_folds"))
+                assert.truthy(vim.wo[winid].foldtext:find("chat_folds"))
+            end)
+
+            it(
+                "preserves user fold state on show for an open widget",
+                function()
+                    add_collapsed_thought_fold(widget)
+                    widget:show()
+
+                    local winid = widget.win_nrs.chat
+                    assert.equal(1, get_foldclosed(winid))
+
+                    vim.api.nvim_win_call(winid, function()
+                        vim.cmd("1foldopen")
+                    end)
+                    assert.equal(-1, get_foldclosed(winid))
+
+                    widget:show({ focus_prompt = false })
+
+                    assert.equal("expr", vim.wo[winid].foldmethod)
+                    assert.truthy(vim.wo[winid].foldexpr:find("chat_folds"))
+                    assert.truthy(vim.wo[winid].foldtext:find("chat_folds"))
+                    assert.equal(-1, get_foldclosed(winid))
+                end
+            )
+
+            it(
+                "reapplies configured fold state after window recreation",
+                function()
+                    add_collapsed_thought_fold(widget)
+                    widget:show()
+
+                    local first_winid = widget.win_nrs.chat
+                    assert.equal(1, get_foldclosed(first_winid))
+
+                    vim.api.nvim_win_call(first_winid, function()
+                        vim.cmd("1foldopen")
+                    end)
+                    assert.equal(-1, get_foldclosed(first_winid))
+
+                    widget:hide()
+                    widget:show({ focus_prompt = false })
+
+                    local second_winid = widget.win_nrs.chat
+                    assert.are_not.equal(first_winid, second_winid)
+                    assert.equal(1, get_foldclosed(second_winid))
+                end
+            )
+
+            it(
+                "applies collapsed fold defaults to live blocks in an open chat window",
+                function()
+                    local original_folds = Config.folds
+                    Config.folds = {
+                        thoughts = { initial_state = "collapsed" },
+                        tool_calls = {
+                            initial_state = "collapsed",
+                            by_kind = {},
+                        },
+                    }
+
+                    local ok, err = pcall(function()
+                        widget:show()
+
+                        local writer = MessageWriter:new(widget.buf_nrs.chat)
+
+                        writer:write_message_chunk({
+                            sessionUpdate = "agent_thought_chunk",
+                            content = {
+                                type = "text",
+                                text = "live thought\nsecond line",
+                            },
+                        })
+
+                        assert.equal(1, get_foldclosed(widget.win_nrs.chat))
+
+                        writer:write_tool_call_block({
+                            tool_call_id = "live-tool-fold",
+                            status = "pending",
+                            kind = "read",
+                            argument = "README.md",
+                            body = { "line 1", "line 2" },
+                        })
+
+                        assert.equal(4, get_foldclosed(widget.win_nrs.chat, 4))
+                    end)
+
+                    Config.folds = original_folds
+                    if not ok then
+                        error(err, 0)
+                    end
+                end
+            )
+
+            it(
+                "preserves existing user fold state when a new live block arrives",
+                function()
+                    local original_folds = Config.folds
+                    Config.folds = {
+                        thoughts = { initial_state = "expanded" },
+                        tool_calls = {
+                            initial_state = "expanded",
+                            by_kind = {},
+                        },
+                    }
+
+                    local ok, err = pcall(function()
+                        widget:show()
+
+                        local writer = MessageWriter:new(widget.buf_nrs.chat)
+
+                        writer:write_message_chunk({
+                            sessionUpdate = "agent_thought_chunk",
+                            content = {
+                                type = "text",
+                                text = "live thought\nsecond line",
+                            },
+                        })
+
+                        assert.equal(-1, get_foldclosed(widget.win_nrs.chat))
+
+                        vim.api.nvim_win_call(widget.win_nrs.chat, function()
+                            vim.cmd("1foldclose")
+                        end)
+                        assert.equal(1, get_foldclosed(widget.win_nrs.chat))
+
+                        writer:write_tool_call_block({
+                            tool_call_id = "live-tool-preserve-fold",
+                            status = "pending",
+                            kind = "read",
+                            argument = "README.md",
+                            body = { "line 1", "line 2" },
+                        })
+
+                        assert.equal(1, get_foldclosed(widget.win_nrs.chat))
+                        assert.equal(-1, get_foldclosed(widget.win_nrs.chat, 4))
+                    end)
+
+                    Config.folds = original_folds
+                    if not ok then
+                        error(err, 0)
+                    end
+                end
+            )
 
             it("hide() stops insert mode", function()
                 widget:show()

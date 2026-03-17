@@ -708,6 +708,44 @@ integrating with other plugins.
 Agentic.nvim uses custom highlight groups that you can override to match your
 colorscheme.
 
+Agentic.nvim can fold rendered thought blocks and tool-call blocks in the chat
+window. Use the fold defaults below to choose how those blocks open, and
+override the highlight groups to tune their folded text and thought rendering.
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    folds = {
+      thoughts = {
+        initial_state = "expanded",
+      },
+      tool_calls = {
+        initial_state = "collapsed",
+        by_kind = {
+          edit = "expanded",
+        },
+      },
+    },
+  },
+  config = function(_, opts)
+    require("agentic").setup(opts)
+
+    vim.api.nvim_set_hl(0, "AgenticThought", { fg = "#8a9aa8", italic = true })
+  end,
+}
+```
+
+### Fold Defaults
+
+Use `opts.folds` to define the initial fold defaults used by rendered thought
+and tool-call blocks in the chat window.
+
+- `thoughts.initial_state` sets the default for thought blocks.
+- `tool_calls.initial_state` sets the default for all tool calls.
+- `tool_calls.by_kind` overrides the tool-call default per tool kind, such as
+  `edit`.
+
 ### Available Highlight Groups
 
 | Highlight Group          | Purpose                                  | Default                             |
@@ -720,6 +758,7 @@ colorscheme.
 | `AgenticStatusCompleted` | Completed tool call status indicator     | `bg=#2d5a3d`                        |
 | `AgenticStatusFailed`    | Failed tool call status indicator        | `bg=#7a2d2d`                        |
 | `AgenticCodeBlockFence`  | The left border decoration on tool calls | Links to `Directory`                |
+| `AgenticThought`         | Rendered thought text and thought fold text      | `fg=#7d8590, italic=true`           |
 | `AgenticTitle`           | Window titles in sidebar                 | `bg=#2787b0, fg=#000000, bold=true` |
 
 If any of these highlight exists, Agentic will use it instead of creating new

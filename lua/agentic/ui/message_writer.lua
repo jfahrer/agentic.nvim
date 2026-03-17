@@ -1,4 +1,5 @@
 local ToolCallDiff = require("agentic.ui.tool_call_diff")
+local ChatFolds = require("agentic.ui.chat_folds")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
@@ -13,6 +14,8 @@ local NS_PERMISSION_BUTTONS =
     vim.api.nvim_create_namespace("agentic_permission_buttons")
 local NS_DIFF_HIGHLIGHTS =
     vim.api.nvim_create_namespace("agentic_diff_highlights")
+local NS_THOUGHT_HIGHLIGHTS =
+    vim.api.nvim_create_namespace("agentic_thought_highlights")
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 
 --- @class agentic.ui.MessageWriter.HighlightRange
@@ -43,6 +46,7 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
 --- @field tool_call_blocks table<string, agentic.ui.MessageWriter.ToolCallBlock>
+--- @field _thought_block? agentic.ui.ChatFoldBlock
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled? boolean
@@ -60,6 +64,7 @@ function MessageWriter:new(bufnr)
     local instance = setmetatable({
         bufnr = bufnr,
         tool_call_blocks = {},
+        _thought_block = nil,
         _last_message_type = nil,
         _should_auto_scroll = nil,
         _scroll_scheduled = false,
@@ -71,6 +76,34 @@ end
 --- @param callback fun()|nil
 function MessageWriter:set_on_content_changed(callback)
     self._on_content_changed = callback
+end
+
+function MessageWriter:reset()
+    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+        self.tool_call_blocks = {}
+        self._thought_block = nil
+        self._last_message_type = nil
+        self._should_auto_scroll = nil
+        self._scroll_scheduled = false
+        return
+    end
+
+    for _, namespace in ipairs({
+        NS_TOOL_BLOCKS,
+        NS_DECORATIONS,
+        NS_PERMISSION_BUTTONS,
+        NS_DIFF_HIGHLIGHTS,
+        NS_THOUGHT_HIGHLIGHTS,
+        NS_STATUS,
+    }) do
+        pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, namespace, 0, -1)
+    end
+
+    self.tool_call_blocks = {}
+    self._thought_block = nil
+    self._last_message_type = nil
+    self._should_auto_scroll = nil
+    self._scroll_scheduled = false
 end
 
 function MessageWriter:_notify_content_changed()
@@ -102,10 +135,22 @@ function MessageWriter:write_message(update)
     end
 
     local lines = vim.split(text, "\n", { plain = true })
+    local add_thought_separator = self._last_message_type
+        == "agent_thought_chunk"
+
+    if add_thought_separator then
+        self:_finalize_thought_block()
+    end
+
+    self._last_message_type = update.sessionUpdate
 
     self:_auto_scroll(self.bufnr)
 
     self:_with_modifiable_and_notify_change(function()
+        if add_thought_separator then
+            self:_append_lines({ "" })
+        end
+
         self:_append_lines(lines)
         self:_append_lines({ "", "" })
     end)
@@ -127,6 +172,8 @@ function MessageWriter:write_message_chunk(update)
         self._last_message_type == "agent_thought_chunk"
         and update.sessionUpdate == "agent_message_chunk"
     then
+        self:_finalize_thought_block()
+
         -- Different message type, add newline before appending, to create visual separation
         -- only for thought -> message
         text = "\n\n" .. text
@@ -138,6 +185,13 @@ function MessageWriter:write_message_chunk(update)
 
     self:_with_modifiable_and_notify_change(function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
+
+        if
+            update.sessionUpdate == "agent_thought_chunk"
+            and self._thought_block == nil
+        then
+            self:_start_thought_block(last_line)
+        end
 
         local current_line = vim.api.nvim_buf_get_lines(
             bufnr,
@@ -161,8 +215,88 @@ function MessageWriter:write_message_chunk(update)
 
         if not success then
             Logger.debug("Failed to set text in buffer", err, lines_to_write)
+            return false
+        end
+
+        if update.sessionUpdate == "agent_thought_chunk" then
+            self:_update_thought_block(vim.api.nvim_buf_line_count(bufnr) - 1)
         end
     end)
+end
+
+--- @param start_row integer
+function MessageWriter:_start_thought_block(start_row)
+    --- @type agentic.ui.ChatFoldBlock
+    local thought_block = {
+        id = "thought:" .. tostring(vim.uv.hrtime()),
+        type = "thought",
+        start_row = start_row,
+        end_row = start_row,
+        summary = "reasoning hidden",
+        initial_state = ChatFolds.get_initial_state("thought", nil),
+    }
+
+    self._thought_block = thought_block
+end
+
+--- @param end_row integer
+function MessageWriter:_update_thought_block(end_row)
+    if self._thought_block == nil then
+        return
+    end
+
+    self._thought_block.end_row = end_row
+    if self._thought_block.id ~= nil then
+        ChatFolds.upsert_block(
+            self.bufnr,
+            self._thought_block.id,
+            self._thought_block
+        )
+    end
+    self:_apply_thought_highlights(self._thought_block)
+end
+
+function MessageWriter:_finalize_thought_block()
+    local thought_block = self._thought_block
+    if thought_block == nil or thought_block.id == nil then
+        return
+    end
+
+    ChatFolds.upsert_block(self.bufnr, thought_block.id, thought_block)
+    self._thought_block = nil
+end
+
+--- @param thought_block agentic.ui.ChatFoldBlock
+function MessageWriter:_apply_thought_highlights(thought_block)
+    pcall(
+        vim.api.nvim_buf_clear_namespace,
+        self.bufnr,
+        NS_THOUGHT_HIGHLIGHTS,
+        thought_block.start_row,
+        thought_block.end_row + 1
+    )
+
+    for line_idx = thought_block.start_row, thought_block.end_row do
+        local line = vim.api.nvim_buf_get_lines(
+            self.bufnr,
+            line_idx,
+            line_idx + 1,
+            false
+        )[1]
+
+        if line then
+            vim.api.nvim_buf_set_extmark(
+                self.bufnr,
+                NS_THOUGHT_HIGHLIGHTS,
+                line_idx,
+                0,
+                {
+                    end_col = #line,
+                    hl_group = Theme.HL_GROUPS.THOUGHT,
+                }
+            )
+        end
+    end
 end
 
 --- @param lines string[]
@@ -235,16 +369,72 @@ function MessageWriter:_auto_scroll(bufnr)
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return string argument
+function MessageWriter:_sanitize_tool_call_argument(tool_call_block)
+    local argument = tool_call_block.argument:gsub("\n", "\\n")
+    return argument
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return string summary
+function MessageWriter:_get_tool_call_fold_summary(tool_call_block)
+    return self:_sanitize_tool_call_argument(tool_call_block)
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+function MessageWriter:_upsert_tool_call_fold(tool_call_block)
+    if tool_call_block.extmark_id == nil then
+        return
+    end
+
+    local pos = vim.api.nvim_buf_get_extmark_by_id(
+        self.bufnr,
+        NS_TOOL_BLOCKS,
+        tool_call_block.extmark_id,
+        { details = true }
+    )
+
+    if not pos or pos[1] == nil or pos[3] == nil or pos[3].end_row == nil then
+        return
+    end
+
+    --- @type agentic.ui.ChatFoldBlock
+    local fold_block = {
+        type = "tool_call",
+        kind = tool_call_block.kind,
+        status = tool_call_block.status,
+        summary = self:_get_tool_call_fold_summary(tool_call_block),
+        start_row = pos[1],
+        end_row = pos[3].end_row,
+        initial_state = ChatFolds.get_initial_state(
+            "tool_call",
+            tool_call_block.kind
+        ),
+    }
+
+    ChatFolds.upsert_block(self.bufnr, tool_call_block.tool_call_id, fold_block)
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
+    if self._last_message_type == "agent_thought_chunk" then
+        self:_finalize_thought_block()
+        self._last_message_type = nil
+    end
+
     self:_auto_scroll(self.bufnr)
 
     self:_with_modifiable_and_notify_change(function(bufnr)
         local kind = tool_call_block.kind
+        local is_empty_buffer = BufHelpers.is_buffer_empty(bufnr)
 
         -- Always add a leading blank line for spacing the previous message chunk
-        self:_append_lines({ "" })
+        if not is_empty_buffer then
+            self:_append_lines({ "" })
+        end
 
-        local start_row = vim.api.nvim_buf_line_count(bufnr)
+        local start_row = is_empty_buffer and 0
+            or vim.api.nvim_buf_line_count(bufnr)
         local lines, highlight_ranges =
             self:_prepare_block_lines(tool_call_block)
 
@@ -276,11 +466,13 @@ function MessageWriter:write_tool_call_block(tool_call_block)
             })
 
         self.tool_call_blocks[tool_call_block.tool_call_id] = tool_call_block
+        self:_upsert_tool_call_fold(tool_call_block)
 
         self:_apply_header_highlight(start_row, tool_call_block.status)
         self:_apply_status_footer(end_row, tool_call_block.status)
 
         self:_append_lines({ "", "" })
+        ChatFolds.apply_initial_state(bufnr, tool_call_block.tool_call_id, true)
     end)
 end
 
@@ -367,6 +559,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 tracker.status
             )
 
+            self:_upsert_tool_call_fold(tracker)
+
             return false
         end
 
@@ -411,6 +605,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             right_gravity = false,
         })
 
+        self:_upsert_tool_call_fold(tracker)
+
         tracker.decoration_extmark_ids =
             self:_render_decorations(start_row, new_end_row)
 
@@ -427,11 +623,7 @@ end
 --- @return agentic.ui.MessageWriter.HighlightRange[] highlight_ranges Array of highlight range specifications (relative to returned lines)
 function MessageWriter:_prepare_block_lines(tool_call_block)
     local kind = tool_call_block.kind
-    local argument = tool_call_block.argument
-
-    -- Sanitize argument to prevent newlines in the header line
-    -- nvim_buf_set_lines doesn't accept array items with embedded newlines
-    argument = argument:gsub("\n", "\\n")
+    local argument = self:_sanitize_tool_call_argument(tool_call_block)
 
     local lines = {
         string.format(" %s(%s) ", kind, argument),
@@ -627,23 +819,24 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
     -- Ensure exactly one empty separator line before the permission block.
     -- During reanchor, remove_permission_buttons leaves a trailing empty
     -- line — reuse it instead of adding another one.
-    local line_count = vim.api.nvim_buf_line_count(self.bufnr)
-    local last_line = vim.api.nvim_buf_get_lines(
-        self.bufnr,
-        line_count - 1,
-        line_count,
-        false
-    )[1]
+    local existing_lines = vim.api.nvim_buf_get_lines(self.bufnr, 0, -1, false)
+    local line_count = #existing_lines
+    local trailing_empty_count = 0
 
-    if last_line == "" then
-        -- Buffer already ends with an empty line (left by
-        -- remove_permission_buttons during reanchor). Reuse it as
-        -- separator — include it in the block range so it gets
-        -- cleaned up, but don't add another one.
-        line_count = line_count - 1
-    else
+    for idx = #existing_lines, 1, -1 do
+        if existing_lines[idx] == "" then
+            trailing_empty_count = trailing_empty_count + 1
+        else
+            break
+        end
+    end
+
+    if trailing_empty_count == 0 then
         -- No trailing empty line — prepend one as separator
         table.insert(lines_to_append, 1, "")
+    else
+        -- Reuse the existing trailing empty separator and trim any extras.
+        line_count = line_count - trailing_empty_count
     end
 
     -- The separator line shifts hint position by 1 in both cases:
@@ -656,7 +849,17 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
 
     self:_auto_scroll(self.bufnr)
 
-    BufHelpers.with_modifiable(self.bufnr, function()
+    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+        if trailing_empty_count > 1 then
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                line_count + 1,
+                line_count + trailing_empty_count,
+                false,
+                {}
+            )
+        end
+
         self:_append_lines(lines_to_append)
     end)
 

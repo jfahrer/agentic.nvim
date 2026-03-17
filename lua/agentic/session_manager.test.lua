@@ -189,6 +189,185 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
+    describe("_cancel_session", function()
+        it(
+            "clears chat folds, thought highlights, and writer runtime state",
+            function()
+                local ChatFolds = require("agentic.ui.chat_folds")
+                local ChatWidget = require("agentic.ui.chat_widget")
+                local MessageWriter = require("agentic.ui.message_writer")
+
+                local widget = ChatWidget:new(
+                    vim.api.nvim_get_current_tabpage(),
+                    function() end
+                )
+                local writer = MessageWriter:new(widget.buf_nrs.chat)
+
+                local ok, err = pcall(function()
+                    widget:show({ focus_prompt = false })
+
+                    writer:write_tool_call_block({
+                        tool_call_id = "tool-1",
+                        status = "pending",
+                        kind = "read",
+                        argument = "lua/agentic/session_manager.lua",
+                        body = { "line 1", "line 2" },
+                    })
+                    writer:write_message_chunk({
+                        sessionUpdate = "agent_thought_chunk",
+                        content = { type = "text", text = "active thought" },
+                    })
+
+                    local thought_ns =
+                        vim.api.nvim_get_namespaces().agentic_thought_highlights
+                    local thought_extmarks = vim.api.nvim_buf_get_extmarks(
+                        widget.buf_nrs.chat,
+                        thought_ns,
+                        { 0, 0 },
+                        { -1, -1 },
+                        { details = true }
+                    )
+                    local fold_blocks =
+                        ChatFolds.get_blocks(widget.buf_nrs.chat)
+                    local old_thought_id = fold_blocks[1] and fold_blocks[1].id
+                    local applied_blocks =
+                        vim.w[widget.win_nrs.chat].agentic_chat_fold_initial_states
+
+                    assert.truthy(#fold_blocks >= 1)
+                    assert.truthy(#thought_extmarks >= 1)
+                    assert.equal(1, vim.tbl_count(writer.tool_call_blocks))
+                    assert.is_not_nil(writer._thought_block)
+                    assert.truthy(vim.tbl_count(applied_blocks) >= 1)
+
+                    local session = {
+                        session_id = "session-1",
+                        agent = { cancel_session = spy.new(function() end) },
+                        widget = widget,
+                        message_writer = writer,
+                        todo_list = { clear = spy.new(function() end) },
+                        file_list = { clear = spy.new(function() end) },
+                        code_selection = { clear = spy.new(function() end) },
+                        diagnostics_list = { clear = spy.new(function() end) },
+                        config_options = { clear = spy.new(function() end) },
+                        permission_manager = { clear = spy.new(function() end) },
+                        chat_history = { messages = {} },
+                        _history_to_send = { { type = "user", text = "hello" } },
+                        _cancel_session = SessionManager._cancel_session,
+                    } --[[@as agentic.SessionManager]]
+
+                    session:_cancel_session()
+
+                    assert.spy(session.agent.cancel_session).was.called(1)
+                    assert.equal(
+                        { "" },
+                        vim.api.nvim_buf_get_lines(
+                            widget.buf_nrs.chat,
+                            0,
+                            -1,
+                            false
+                        )
+                    )
+                    assert.equal(0, #ChatFolds.get_blocks(widget.buf_nrs.chat))
+                    assert.equal(
+                        0,
+                        #vim.api.nvim_buf_get_extmarks(
+                            widget.buf_nrs.chat,
+                            thought_ns,
+                            { 0, 0 },
+                            { -1, -1 },
+                            { details = true }
+                        )
+                    )
+                    assert.equal(0, vim.tbl_count(writer.tool_call_blocks))
+                    assert.is_nil(writer._thought_block)
+                    assert.is_nil(writer._last_message_type)
+                    assert.equal(
+                        0,
+                        vim.tbl_count(
+                            vim.w[widget.win_nrs.chat].agentic_chat_fold_initial_states
+                                or {}
+                        )
+                    )
+
+                    writer:write_message_chunk({
+                        sessionUpdate = "agent_thought_chunk",
+                        content = { type = "text", text = "fresh thought" },
+                    })
+
+                    local next_session_extmarks = vim.api.nvim_buf_get_extmarks(
+                        widget.buf_nrs.chat,
+                        thought_ns,
+                        { 0, 0 },
+                        { -1, -1 },
+                        { details = true }
+                    )
+                    local next_session_blocks =
+                        ChatFolds.get_blocks(widget.buf_nrs.chat)
+
+                    assert.equal(
+                        { "fresh thought" },
+                        vim.api.nvim_buf_get_lines(
+                            widget.buf_nrs.chat,
+                            0,
+                            -1,
+                            false
+                        )
+                    )
+                    assert.equal(1, #next_session_extmarks)
+                    assert.equal(0, next_session_extmarks[1][2])
+                    assert.equal(1, #next_session_blocks)
+                    assert.are_not.equal(
+                        old_thought_id,
+                        next_session_blocks[1].id
+                    )
+                    assert.equal(0, next_session_blocks[1].start_row)
+                    assert.equal(0, next_session_blocks[1].end_row)
+
+                    writer:write_tool_call_block({
+                        tool_call_id = "tool-2",
+                        status = "pending",
+                        kind = "read",
+                        argument = "lua/agentic/ui/message_writer.lua",
+                        body = { "fresh line" },
+                    })
+
+                    local lines = vim.api.nvim_buf_get_lines(
+                        widget.buf_nrs.chat,
+                        0,
+                        -1,
+                        false
+                    )
+                    local final_blocks =
+                        ChatFolds.get_blocks(widget.buf_nrs.chat)
+                    local final_extmarks = vim.api.nvim_buf_get_extmarks(
+                        widget.buf_nrs.chat,
+                        thought_ns,
+                        { 0, 0 },
+                        { -1, -1 },
+                        { details = true }
+                    )
+
+                    assert.equal("fresh thought", lines[1])
+                    assert.equal("", lines[2])
+                    assert.equal(
+                        " read(lua/agentic/ui/message_writer.lua) ",
+                        lines[3]
+                    )
+                    assert.equal(2, #final_blocks)
+                    assert.equal("tool-2", final_blocks[2].id)
+                    assert.equal(1, #final_extmarks)
+                    assert.equal(0, final_extmarks[1][2])
+                end)
+
+                widget:destroy()
+
+                if not ok then
+                    error(err, 0)
+                end
+            end
+        )
+    end)
+
     describe("switch_provider", function()
         --- @type TestStub
         local notify_stub
