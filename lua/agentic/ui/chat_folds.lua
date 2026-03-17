@@ -21,6 +21,7 @@ local ChatFolds = {}
 --- @class agentic.ui.ChatFoldWindowState
 --- @field block agentic.ui.ChatFoldBlock
 --- @field is_closed boolean
+--- @field use_initial_state? boolean
 
 local FOLDEXPR = "v:lua.require'agentic.ui.chat_folds'.foldexpr()"
 local FOLDTEXT = "v:lua.require'agentic.ui.chat_folds'.foldtext()"
@@ -79,19 +80,20 @@ end
 --- @private
 --- @param bufnr integer
 --- @param winid integer
---- @param new_block_id string
+--- @param initial_block_id string|nil
 --- @return agentic.ui.ChatFoldWindowState[] states
-local function capture_existing_fold_states(bufnr, winid, new_block_id)
+local function capture_fold_states(bufnr, winid, initial_block_id)
     --- @type agentic.ui.ChatFoldWindowState[]
     local states = {}
 
     for _, existing_block in ipairs(ChatFolds.get_blocks(bufnr)) do
-        if existing_block.id ~= new_block_id then
-            table.insert(states, {
-                block = existing_block,
-                is_closed = is_fold_closed(winid, existing_block),
-            })
-        end
+        local use_initial_state = existing_block.id == initial_block_id
+        table.insert(states, {
+            block = existing_block,
+            is_closed = use_initial_state and false
+                or is_fold_closed(winid, existing_block),
+            use_initial_state = use_initial_state,
+        })
     end
 
     return states
@@ -99,31 +101,57 @@ end
 
 --- @private
 --- @param bufnr integer
+--- @param winid integer
+--- @param initial_block_id string|nil
+local function refresh_window_folds(bufnr, winid, initial_block_id)
+    local fold_states = capture_fold_states(bufnr, winid, initial_block_id)
+
+    vim.api.nvim_win_call(winid, function()
+        vim.cmd("silent! normal! zx")
+    end)
+
+    for _, fold_state in ipairs(fold_states) do
+        if fold_state.use_initial_state then
+            apply_initial_state(winid, fold_state.block)
+        else
+            restore_fold_state(winid, fold_state.block, fold_state.is_closed)
+        end
+    end
+end
+
+--- @private
+--- @param bufnr integer
 --- @param id string
---- @param block agentic.ui.ChatFoldBlock
 --- @param force boolean|nil
-local function apply_initial_state_to_visible_windows(bufnr, id, block, force)
+local function apply_initial_state_to_visible_windows(bufnr, id, force)
     for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
         if window_uses_agentic_folds(winid) then
             local applied_blocks = get_applied_blocks(winid)
             if force or not applied_blocks[id] then
-                local existing_fold_states =
-                    capture_existing_fold_states(bufnr, winid, id)
-
-                vim.api.nvim_win_call(winid, function()
-                    vim.cmd("silent! normal! zx")
-                end)
-
-                for _, fold_state in ipairs(existing_fold_states) do
-                    restore_fold_state(
-                        winid,
-                        fold_state.block,
-                        fold_state.is_closed
-                    )
-                end
-
-                apply_initial_state(winid, block)
+                refresh_window_folds(bufnr, winid, id)
                 applied_blocks[id] = true
+                vim.w[winid].agentic_chat_fold_initial_states = applied_blocks
+            end
+        end
+    end
+end
+
+--- @private
+--- @param bufnr integer
+--- @param block_id string
+--- @param use_initial_state boolean|nil
+local function refresh_updated_block_windows(bufnr, block_id, use_initial_state)
+    for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+        if window_uses_agentic_folds(winid) then
+            refresh_window_folds(
+                bufnr,
+                winid,
+                use_initial_state and block_id or nil
+            )
+
+            local applied_blocks = get_applied_blocks(winid)
+            if applied_blocks[block_id] == nil then
+                applied_blocks[block_id] = true
                 vim.w[winid].agentic_chat_fold_initial_states = applied_blocks
             end
         end
@@ -160,7 +188,7 @@ function ChatFolds.apply_initial_state(bufnr, id, force)
         return
     end
 
-    apply_initial_state_to_visible_windows(bufnr, id, block, force)
+    apply_initial_state_to_visible_windows(bufnr, id, force)
 end
 
 --- @private
@@ -218,7 +246,8 @@ end
 --- @param block agentic.ui.ChatFoldBlock
 function ChatFolds.upsert_block(bufnr, id, block)
     local store = get_store(bufnr)
-    local is_new_block = store[id] == nil
+    local previous_block = store[id]
+    local is_new_block = previous_block == nil
     local merged_block =
         vim.tbl_extend("force", store[id] or {}, vim.deepcopy(block)) --[[@as agentic.ui.ChatFoldBlock]]
     store[id] = merged_block
@@ -226,7 +255,21 @@ function ChatFolds.upsert_block(bufnr, id, block)
     vim.b[bufnr].agentic_chat_fold_blocks_cache = nil
 
     if is_new_block then
-        apply_initial_state_to_visible_windows(bufnr, id, merged_block)
+        apply_initial_state_to_visible_windows(bufnr, id)
+        return
+    end
+
+    local range_changed = previous_block.start_row ~= merged_block.start_row
+        or previous_block.end_row ~= merged_block.end_row
+
+    if range_changed then
+        local previous_line_count = previous_block.end_row
+            - previous_block.start_row
+        local current_line_count = merged_block.end_row - merged_block.start_row
+        local should_reapply_initial_state = previous_line_count == 0
+            and current_line_count > 0
+
+        refresh_updated_block_windows(bufnr, id, should_reapply_initial_state)
     end
 end
 

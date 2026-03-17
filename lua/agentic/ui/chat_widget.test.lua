@@ -333,6 +333,67 @@ describe("agentic.ui.ChatWidget", function()
                 end
             )
 
+            it(
+                "keeps a single closed fold while a live thought grows",
+                function()
+                    local original_folds = Config.folds
+                    Config.folds = {
+                        thoughts = { initial_state = "collapsed" },
+                        tool_calls = {
+                            initial_state = "expanded",
+                            by_kind = {},
+                        },
+                    }
+
+                    local ok, err = pcall(function()
+                        widget:show()
+
+                        local writer = MessageWriter:new(widget.buf_nrs.chat)
+
+                        writer:write_message_chunk({
+                            sessionUpdate = "agent_thought_chunk",
+                            content = {
+                                type = "text",
+                                text = "first paragraph",
+                            },
+                        })
+
+                        writer:write_message_chunk({
+                            sessionUpdate = "agent_thought_chunk",
+                            content = {
+                                type = "text",
+                                text = "\n\n- bullet one",
+                            },
+                        })
+
+                        writer:write_message_chunk({
+                            sessionUpdate = "agent_thought_chunk",
+                            content = {
+                                type = "text",
+                                text = "\n- bullet two\n\nclosing",
+                            },
+                        })
+
+                        local blocks = ChatFolds.get_blocks(widget.buf_nrs.chat)
+                        assert.equal(1, #blocks)
+                        assert.equal("thought", blocks[1].type)
+
+                        local fold_start = blocks[1].start_row + 1
+                        for line = blocks[1].start_row + 1, blocks[1].end_row + 1 do
+                            assert.equal(
+                                fold_start,
+                                get_foldclosed(widget.win_nrs.chat, line)
+                            )
+                        end
+                    end)
+
+                    Config.folds = original_folds
+                    if not ok then
+                        error(err, 0)
+                    end
+                end
+            )
+
             it("hide() stops insert mode", function()
                 widget:show()
                 vim.api.nvim_set_current_win(widget.win_nrs.input)
