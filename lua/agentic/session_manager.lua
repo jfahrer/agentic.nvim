@@ -6,6 +6,7 @@
 
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
+local ChatFolds = require("agentic.ui.chat_folds")
 local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local DiagnosticsList = require("agentic.ui.diagnostics_list")
@@ -52,6 +53,7 @@ end
 --- @field widget agentic.ui.ChatWidget
 --- @field agent agentic.acp.ACPClient
 --- @field message_writer agentic.ui.MessageWriter
+--- @field chat_folds agentic.ui.ChatFolds
 --- @field permission_manager agentic.ui.PermissionManager
 --- @field status_animation agentic.ui.StatusAnimation
 --- @field file_list agentic.ui.FileList
@@ -131,6 +133,14 @@ function SessionManager:new(tab_page_id)
     end)
 
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
+    self.chat_folds =
+        ChatFolds:new(self.widget.buf_nrs.chat, self.message_writer)
+    vim.api.nvim_create_autocmd("BufWinEnter", {
+        buffer = self.widget.buf_nrs.chat,
+        callback = function()
+            self.chat_folds:backfill_pending_for_current_window()
+        end,
+    })
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.permission_manager = PermissionManager:new(self.message_writer)
 
@@ -199,6 +209,11 @@ function SessionManager:new(tab_page_id)
     end)
 
     return self
+end
+
+--- @param tool_call_id string
+function SessionManager:_sync_tool_call_folds(tool_call_id)
+    self.chat_folds:sync_tool_call(tool_call_id)
 end
 
 --- @param update agentic.acp.SessionUpdateMessage
@@ -282,6 +297,7 @@ function SessionManager:_on_tool_call(tool_call)
     end
 
     self.message_writer:write_tool_call_block(tool_call)
+    self:_sync_tool_call_folds(tool_call.tool_call_id)
 
     -- Store merged block from MessageWriter (has normalized/accumulated fields)
     local merged = self.message_writer.tool_call_blocks[tool_call.tool_call_id]
@@ -302,6 +318,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         self:_on_tool_call(tool_call_update)
     else
         self.message_writer:update_tool_call_block(tool_call_update)
+        self:_sync_tool_call_folds(tool_call_update.tool_call_id)
 
         -- Store merged block from MessageWriter (has accumulated body and normalized fields)
         local merged =
@@ -686,11 +703,12 @@ function SessionManager:_handle_input_submit(input_text)
 end
 
 --- Create a new session, optionally cancelling any existing one
---- @param opts {restore_mode?: boolean, on_created?: fun()}|nil
+--- @param opts {restore_mode?: boolean, on_created?: fun(), on_failed?: fun()|nil}|nil
 function SessionManager:new_session(opts)
     opts = opts or {}
     local restore_mode = opts.restore_mode or false
     local on_created = opts.on_created
+    local on_failed = opts.on_failed
     if not restore_mode then
         self:_cancel_session()
     end
@@ -755,6 +773,9 @@ function SessionManager:new_session(opts)
         if err or not response then
             -- no log here, already logged in create_session
             self.session_id = nil
+            if on_failed then
+                on_failed()
+            end
             return
         end
 
@@ -794,7 +815,9 @@ function SessionManager:new_session(opts)
         -- Defer to avoid fast event context issues
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
-            local agent_info = self.agent.agent_info
+            --- @type agentic.acp.ACPClientData
+            local agent = self.agent
+            local agent_info = agent.agent_info
             local welcome_message = SessionManager._generate_welcome_header(
                 self.agent.provider_config.name,
                 self.session_id,
@@ -819,6 +842,7 @@ function SessionManager:_cancel_session()
         -- Otherwise, it clears selections and files when opening for the first time
         self.agent:cancel_session(self.session_id)
         self.widget:clear()
+        self.chat_folds:reset()
         self.todo_list:clear()
         self.file_list:clear()
         self.code_selection:clear()
@@ -1107,12 +1131,20 @@ function SessionManager:restore_from_history(history, opts)
     if opts.reuse_session and self.session_id then
         -- Reuse existing ACP session, just replay messages
         self._restoring = false
+        self.widget:clear()
+        self.chat_folds:reset()
+        self.permission_manager:clear()
+        self.todo_list:clear()
+        self.file_list:clear()
+        self.code_selection:clear()
+        self.diagnostics_list:clear()
         SessionRestore.replay_messages(
             self.message_writer,
-            self._history_to_send
+            self._history_to_send,
+            function(tool_block)
+                self:_sync_tool_call_folds(tool_block.tool_call_id)
+            end
         )
-        -- ACP session already knows these messages; clear to prevent duplicate prepend
-        self._history_to_send = nil
     else
         -- Create fresh ACP session, then replay messages after session is ready
         self:new_session({
@@ -1121,8 +1153,14 @@ function SessionManager:restore_from_history(history, opts)
                 self._restoring = false
                 SessionRestore.replay_messages(
                     self.message_writer,
-                    self._history_to_send
+                    self._history_to_send,
+                    function(tool_block)
+                        self:_sync_tool_call_folds(tool_block.tool_call_id)
+                    end
                 )
+            end,
+            on_failed = function()
+                self._restoring = false
             end,
         })
     end

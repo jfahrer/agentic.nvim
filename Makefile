@@ -7,7 +7,7 @@ STYLUA   ?= $(shell which stylua 2>/dev/null || echo "$(HOME)/.local/share/nvim/
 PROJECT ?= lua/ tests/
 LOGDIR  ?= .luals-log
 
-.PHONY: luals selene selene-file format-check format format-file check test validate install-hooks
+.PHONY: luals selene selene-file format-check format format-file check test validate benchmark-tool-call-folding install-hooks
 
 test:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
@@ -17,6 +17,9 @@ test-verbose:
 
 test-file:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run_file('$(FILE)')"
+
+benchmark-tool-call-folding:
+	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.benchmarks.tool_call_response_folding').run()"
 
 # Lua Language Server headless diagnosis report
 luals:

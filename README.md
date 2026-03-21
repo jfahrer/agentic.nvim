@@ -378,6 +378,37 @@ configure it per provider:
 The mode will only be set if it's available from the provider. Use `<S-Tab>` to
 see available modes for your provider.
 
+### Tool Call Folding
+
+Configure automatic folding for long tool call responses in the chat buffer:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    folding = {
+      tool_calls = {
+        min_lines = 24,
+        kinds = {
+          fetch = {
+            min_lines = 8,
+          },
+          edit = {
+            enabled = false,
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+- `folding.tool_calls.enabled` - Master switch for tool call folding
+- `folding.tool_calls.min_lines` - Default line threshold before folding starts
+- `folding.tool_calls.kinds.<kind>.enabled` - Per-kind override for `fetch`,
+  `execute`, and `edit`
+- `folding.tool_calls.kinds.<kind>.min_lines` - Per-kind line threshold override
+
 ### Window Layout
 
 Configure the widget layout position and sizing:

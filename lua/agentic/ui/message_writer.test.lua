@@ -430,4 +430,64 @@ describe("agentic.ui.MessageWriter", function()
             assert.equal("inserted", new_ranges[1].new_line)
         end)
     end)
+
+    describe("get_tool_call_rows", function()
+        it("returns tracked rows after initial write", function()
+            local block = make_tool_call_block("rows-initial", "pending", {
+                "first output line",
+                "second output line",
+            })
+
+            writer:write_tool_call_block(block)
+
+            local rows = writer:get_tool_call_rows("rows-initial")
+
+            assert.is_not_nil(rows)
+            if rows == nil then
+                return
+            end
+
+            assert.equal(1, rows.start_row)
+            assert.equal(3, rows.end_row)
+            assert.equal(block, rows.tracker)
+        end)
+
+        it("returns updated rows after block update", function()
+            writer:write_tool_call_block(
+                make_tool_call_block("rows-update", "pending", {
+                    "before",
+                })
+            )
+
+            writer:update_tool_call_block({
+                tool_call_id = "rows-update",
+                status = "completed",
+                body = {
+                    "after one",
+                    "after two",
+                    "after three",
+                },
+            })
+
+            local rows = writer:get_tool_call_rows("rows-update")
+
+            assert.is_not_nil(rows)
+            if rows == nil then
+                return
+            end
+
+            assert.equal(1, rows.start_row)
+            assert.equal(9, rows.end_row)
+            assert.equal("completed", rows.tracker.status)
+            assert.same({
+                "before",
+                "",
+                "---",
+                "",
+                "after one",
+                "after two",
+                "after three",
+            }, rows.tracker.body)
+        end)
+    end)
 end)

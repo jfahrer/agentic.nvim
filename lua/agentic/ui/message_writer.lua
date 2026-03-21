@@ -26,16 +26,18 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field old string[]
 --- @field all? boolean TODO: check if it's still necessary to replace all occurrences or the agents send multiple requests
 
---- @class agentic.ui.MessageWriter.ToolCallBlock
+--- @class agentic.ui.MessageWriter.ToolCallBase
 --- @field tool_call_id string
 --- @field kind? agentic.acp.ToolKind
 --- @field argument? string
 --- @field file_path? string
---- @field extmark_id? integer Range extmark spanning the block
---- @field decoration_extmark_ids? integer[] IDs of decoration extmarks from ExtmarkBlock
 --- @field status? agentic.acp.ToolCallStatus
 --- @field body? string[]
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
+
+--- @class agentic.ui.MessageWriter.ToolCallBlock : agentic.ui.MessageWriter.ToolCallBase
+--- @field extmark_id? integer Range extmark spanning the block
+--- @field decoration_extmark_ids? integer[] IDs of decoration extmarks from ExtmarkBlock
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -44,6 +46,7 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled? boolean
 --- @field _on_content_changed? fun()
+--- @field get_tool_call_rows fun(self: agentic.ui.MessageWriter, tool_call_id: string): agentic.ui.MessageWriter.ToolCallRows|nil
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -281,7 +284,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
     end)
 end
 
---- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBase
 function MessageWriter:update_tool_call_block(tool_call_block)
     local tracker = self.tool_call_blocks[tool_call_block.tool_call_id]
 
@@ -427,6 +430,45 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             tracker.status
         )
     end)
+end
+
+--- @class agentic.ui.MessageWriter.ToolCallRows
+--- @field start_row integer
+--- @field end_row integer
+--- @field tracker agentic.ui.MessageWriter.ToolCallBlock
+
+--- @param tool_call_id string
+--- @return agentic.ui.MessageWriter.ToolCallRows|nil rows
+function MessageWriter:get_tool_call_rows(tool_call_id)
+    local tracker = self.tool_call_blocks[tool_call_id]
+    if tracker == nil or tracker.extmark_id == nil then
+        return nil
+    end
+
+    local pos = vim.api.nvim_buf_get_extmark_by_id(
+        self.bufnr,
+        NS_TOOL_BLOCKS,
+        tracker.extmark_id,
+        { details = true }
+    )
+
+    if
+        pos == nil
+        or pos[1] == nil
+        or pos[3] == nil
+        or pos[3].end_row == nil
+    then
+        return nil
+    end
+
+    --- @type agentic.ui.MessageWriter.ToolCallRows
+    local rows = {
+        start_row = pos[1],
+        end_row = pos[3].end_row,
+        tracker = tracker,
+    }
+
+    return rows
 end
 
 --- Build the header line string for a tool call block

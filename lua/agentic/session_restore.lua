@@ -32,8 +32,17 @@ local function do_restore(session_id, tab_page_id, has_conflict)
         SessionRegistry.get_session_for_tab_page(tab_page_id, function(session)
             if has_conflict then
                 if session.session_id then
-                    session.agent:cancel_session(session.session_id)
-                    session.widget:clear()
+                    --- @diagnostic disable-next-line: invisible
+                    if session._cancel_session then
+                        --- @diagnostic disable-next-line: invisible
+                        session:_cancel_session()
+                    else
+                        session.agent:cancel_session(session.session_id)
+                        if session.chat_folds and session.chat_folds.reset then
+                            session.chat_folds:reset()
+                        end
+                        session.widget:clear()
+                    end
                 end
             end
 
@@ -112,7 +121,8 @@ end
 --- Replay stored messages to the UI
 --- @param writer agentic.ui.MessageWriter
 --- @param messages agentic.ui.ChatHistory.Message[]
-function SessionRestore.replay_messages(writer, messages)
+--- @param on_tool_call_rendered fun(tool_call: agentic.ui.MessageWriter.ToolCallBlock)|nil
+function SessionRestore.replay_messages(writer, messages, on_tool_call_rendered)
     for _, msg in ipairs(messages) do
         if msg.type == "user" then
             -- Format user message for display with original timestamp
@@ -150,6 +160,9 @@ function SessionRestore.replay_messages(writer, messages)
                 diff = msg.diff,
             }
             writer:write_tool_call_block(tool_block)
+            if on_tool_call_rendered then
+                on_tool_call_rendered(tool_block)
+            end
         end
     end
 end

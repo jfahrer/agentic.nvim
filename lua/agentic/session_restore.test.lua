@@ -1,5 +1,6 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local MessageWriter = require("agentic.ui.message_writer")
 
 describe("SessionRestore", function()
     --- @type agentic.SessionRestore
@@ -43,6 +44,8 @@ describe("SessionRestore", function()
             session_id = opts.session_id or "current-session",
             chat_history = opts.chat_history or { messages = {} },
             agent = { cancel_session = spy.new(function() end) },
+            chat_folds = opts.chat_folds or { reset = spy.new(function() end) },
+            _cancel_session = opts._cancel_session or spy.new(function() end),
             widget = {
                 clear = spy.new(function() end),
                 show = spy.new(function() end),
@@ -240,11 +243,51 @@ describe("SessionRestore", function()
                 local conflict_callback = vim_ui_select_stub.calls[2][3]
                 conflict_callback("Clear current session and restore")
 
-                assert.spy(mock_session.agent.cancel_session).was.called(1)
-                assert.spy(mock_session.widget.clear).was.called(1)
+                assert.spy(mock_session._cancel_session).was.called(1)
 
                 local restore_call = mock_session.restore_from_history.calls[1]
                 assert.is_false(restore_call[3].reuse_session)
+            end
+        )
+
+        it(
+            "uses the broader cancel path before replaying restored history",
+            function()
+                local call_order = {}
+                local mock_session = create_mock_session({
+                    chat_history = { messages = { { type = "user" } } },
+                    _cancel_session = spy.new(function()
+                        table.insert(call_order, "cancel_session")
+                    end),
+                })
+
+                mock_session.widget.clear = spy.new(function()
+                    table.insert(call_order, "clear_widget")
+                end)
+                mock_session.restore_from_history = spy.new(function()
+                    table.insert(call_order, "restore_from_history")
+                end)
+
+                setup_list_stub()
+                setup_load_stub(mock_history)
+                setup_registry_stub(mock_session)
+
+                SessionRestore.show_picker(
+                    1,
+                    mock_session --[[@as agentic.SessionManager]]
+                )
+
+                local callback = select_session(1)
+                callback({ session_id = "session-1" })
+
+                local conflict_callback = vim_ui_select_stub.calls[2][3]
+                conflict_callback("Clear current session and restore")
+
+                assert.same({
+                    "cancel_session",
+                    "restore_from_history",
+                }, call_order)
+                assert.spy(mock_session.widget.clear).was.called(0)
             end
         )
     end)
@@ -342,5 +385,62 @@ describe("SessionRestore", function()
 
             assert.spy(vim_ui_select_stub).was.called(1)
         end)
+    end)
+
+    describe("replay_messages", function()
+        it(
+            "calls on_tool_call_rendered right after writing the tool call",
+            function()
+                local bufnr = vim.api.nvim_create_buf(false, true)
+                local writer = MessageWriter:new(bufnr)
+                local call_order = {}
+                local original_write_tool_call_block =
+                    writer.write_tool_call_block
+                local write_tool_call_block_stub =
+                    spy.stub(writer, "write_tool_call_block")
+                local callback_spy = spy.new(function(tool_call)
+                    table.insert(
+                        call_order,
+                        "callback:" .. tool_call.tool_call_id
+                    )
+                end)
+
+                write_tool_call_block_stub:invokes(function(self, tool_call)
+                    table.insert(call_order, "write:" .. tool_call.tool_call_id)
+                    return original_write_tool_call_block(self, tool_call)
+                end)
+
+                --- @type agentic.ui.ChatHistory.Message[]
+                local messages = {
+                    {
+                        type = "tool_call",
+                        tool_call_id = "tool-restore-1",
+                        kind = "execute",
+                        status = "completed",
+                        argument = "ls",
+                        body = { "line 1", "line 2" },
+                    },
+                }
+
+                SessionRestore.replay_messages(
+                    writer,
+                    messages,
+                    callback_spy --[[@as function]]
+                )
+
+                assert.same({
+                    "write:tool-restore-1",
+                    "callback:tool-restore-1",
+                }, call_order)
+                assert.spy(callback_spy).was.called(1)
+                assert.equal(
+                    "tool-restore-1",
+                    callback_spy.calls[1][1].tool_call_id
+                )
+
+                write_tool_call_block_stub:revert()
+                vim.api.nvim_buf_delete(bufnr, { force = true })
+            end
+        )
     end)
 end)

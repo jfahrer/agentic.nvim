@@ -147,6 +147,23 @@
 --- @class agentic.UserConfig.SessionRestore
 --- @field storage_path? string Path to store session data; if nil, default path is used: ~/.cache/nvim/agentic/sessions/
 
+--- @class agentic.UserConfig.ToolCallFoldKind
+--- @field enabled? boolean
+--- @field min_lines? number
+
+--- @class agentic.UserConfig.ToolCallFoldKinds
+--- @field fetch? agentic.UserConfig.ToolCallFoldKind
+--- @field execute? agentic.UserConfig.ToolCallFoldKind
+--- @field edit? agentic.UserConfig.ToolCallFoldKind
+
+--- @class agentic.UserConfig.ToolCallFolding
+--- @field enabled boolean
+--- @field min_lines number
+--- @field kinds agentic.UserConfig.ToolCallFoldKinds
+
+--- @class agentic.UserConfig.Folding
+--- @field tool_calls agentic.UserConfig.ToolCallFolding
+
 --- All the user config configurable options are optional
 --- @class agentic.PartialUserConfig
 --- @field debug? boolean Enable printing debug messages which can be read via `:messages`
@@ -166,6 +183,7 @@
 --- @field headers? agentic.UserConfig.Headers
 --- @field settings? agentic.UserConfig.Settings
 --- @field session_restore? agentic.UserConfig.SessionRestore
+--- @field folding? agentic.UserConfig.Folding
 
 --- @class agentic.UserConfig
 --- @field debug boolean Enable printing debug messages which can be read via `:messages`
@@ -185,6 +203,7 @@
 --- @field headers agentic.UserConfig.Headers
 --- @field settings agentic.UserConfig.Settings
 --- @field session_restore agentic.UserConfig.SessionRestore
+--- @field folding agentic.UserConfig.Folding
 local ConfigDefault = {
     debug = false,
 
@@ -390,6 +409,28 @@ local ConfigDefault = {
         center_on_navigate_hunks = true,
     },
 
+    --- Fold long tool call responses in chat output
+    folding = {
+        tool_calls = {
+            enabled = true,
+            min_lines = 20,
+            kinds = {
+                fetch = {
+                    enabled = true,
+                    min_lines = 8,
+                },
+                execute = {
+                    enabled = true,
+                    min_lines = 12,
+                },
+                edit = {
+                    enabled = false,
+                },
+            },
+        },
+    },
+
+    --- @type agentic.UserConfig.Hooks
     hooks = {
         on_prompt_submit = nil,
         on_response_complete = nil,
