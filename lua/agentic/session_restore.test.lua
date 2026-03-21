@@ -43,6 +43,8 @@ describe("SessionRestore", function()
             session_id = opts.session_id or "current-session",
             chat_history = opts.chat_history or { messages = {} },
             agent = { cancel_session = spy.new(function() end) },
+            cancel_current_session = opts.cancel_current_session
+                or spy.new(function() end),
             widget = {
                 clear = spy.new(function() end),
                 show = spy.new(function() end),
@@ -240,11 +242,53 @@ describe("SessionRestore", function()
                 local conflict_callback = vim_ui_select_stub.calls[2][3]
                 conflict_callback("Clear current session and restore")
 
-                assert.spy(mock_session.agent.cancel_session).was.called(1)
-                assert.spy(mock_session.widget.clear).was.called(1)
+                assert.spy(mock_session.cancel_current_session).was.called(1)
+                assert.spy(mock_session.agent.cancel_session).was.called(0)
+                assert.spy(mock_session.widget.clear).was.called(0)
 
                 local restore_call = mock_session.restore_from_history.calls[1]
                 assert.is_false(restore_call[3].reuse_session)
+            end
+        )
+
+        it(
+            "uses the broader cancel path before replaying restored history",
+            function()
+                local call_order = {}
+                local mock_session = create_mock_session({
+                    chat_history = { messages = { { type = "user" } } },
+                    cancel_current_session = spy.new(function()
+                        table.insert(call_order, "cancel_session")
+                    end),
+                })
+
+                mock_session.widget.clear = spy.new(function()
+                    table.insert(call_order, "clear_widget")
+                end)
+                mock_session.restore_from_history = spy.new(function()
+                    table.insert(call_order, "restore_from_history")
+                end)
+
+                setup_list_stub()
+                setup_load_stub(mock_history)
+                setup_registry_stub(mock_session)
+
+                SessionRestore.show_picker(
+                    1,
+                    mock_session --[[@as agentic.SessionManager]]
+                )
+
+                local callback = select_session(1)
+                callback({ session_id = "session-1" })
+
+                local conflict_callback = vim_ui_select_stub.calls[2][3]
+                conflict_callback("Clear current session and restore")
+
+                assert.same({
+                    "cancel_session",
+                    "restore_from_history",
+                }, call_order)
+                assert.spy(mock_session.widget.clear).was.called(0)
             end
         )
     end)

@@ -32,8 +32,12 @@ local function do_restore(session_id, tab_page_id, has_conflict)
         SessionRegistry.get_session_for_tab_page(tab_page_id, function(session)
             if has_conflict then
                 if session.session_id then
-                    session.agent:cancel_session(session.session_id)
-                    session.widget:clear()
+                    if session.cancel_current_session then
+                        session:cancel_current_session()
+                    else
+                        session.agent:cancel_session(session.session_id)
+                        session.widget:clear()
+                    end
                 end
             end
 

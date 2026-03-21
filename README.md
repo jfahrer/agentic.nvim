@@ -653,6 +653,49 @@ Use `]c` and `[c` to navigate between diff hunks (configurable).
 
 **Note:** Changing the layout requires restarting Neovim.
 
+### Tool Call Folding
+
+Completed tool call responses can be folded with native Neovim manual folds.
+Agentic only folds the response body, so the tool header and status stay
+visible. In-progress and failed tool calls stay open by default.
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    folding = {
+      tool_calls = {
+        enabled = true,
+        min_lines = 20,
+        kinds = {
+          fetch = {
+            min_lines = 8,
+          },
+          execute = {
+            min_lines = 12,
+          },
+          edit = {
+            enabled = false,
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+This example folds completed `fetch` output sooner while leaving `edit` tool
+calls open.
+
+- `folding.tool_calls.enabled` - Master switch for automatic tool-response folds
+- `folding.tool_calls.min_lines` - Default rendered response-body threshold
+- `folding.tool_calls.kinds.<kind>.enabled` - Per-tool override for auto-folding
+- `folding.tool_calls.kinds.<kind>.min_lines` - Per-tool line threshold override
+
+Supported normalized tool kinds include `fetch`, `execute`, `edit`, and `read`.
+Folded tool responses render with `response hidden (N lines)`, and you can use
+Neovim's normal fold commands like `zc` and `zo` inside the chat buffer.
+
 ### Slash Commands
 
 Type `/` in the Prompt buffer to see available slash commands with

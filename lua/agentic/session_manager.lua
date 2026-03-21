@@ -52,6 +52,7 @@ end
 --- @field widget agentic.ui.ChatWidget
 --- @field agent agentic.acp.ACPClient
 --- @field message_writer agentic.ui.MessageWriter
+--- @field chat_folds agentic.ui.ChatFolds
 --- @field permission_manager agentic.ui.PermissionManager
 --- @field status_animation agentic.ui.StatusAnimation
 --- @field file_list agentic.ui.FileList
@@ -91,6 +92,7 @@ end
 function SessionManager:new(tab_page_id)
     local AgentInstance = require("agentic.acp.agent_instance")
     local ChatWidget = require("agentic.ui.chat_widget")
+    local ChatFolds = require("agentic.ui.chat_folds")
     local CodeSelection = require("agentic.ui.code_selection")
     local FileList = require("agentic.ui.file_list")
     local FilePicker = require("agentic.ui.file_picker")
@@ -131,8 +133,20 @@ function SessionManager:new(tab_page_id)
     end)
 
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
+    self.chat_folds = ChatFolds:new(self.widget.buf_nrs.chat)
+    self.message_writer:set_chat_folds(self.chat_folds)
+    self.widget:set_on_before_hide(function()
+        self.chat_folds:remember_visible_window_states()
+    end)
+    self.widget:set_on_after_show(function(chat_winid)
+        if chat_winid and vim.api.nvim_win_is_valid(chat_winid) then
+            self.chat_folds:on_buf_win_enter(chat_winid)
+        end
+    end)
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.permission_manager = PermissionManager:new(self.message_writer)
+
+    self:_bind_chat_buffer_events()
 
     FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
@@ -199,6 +213,16 @@ function SessionManager:new(tab_page_id)
     end)
 
     return self
+end
+
+function SessionManager:_bind_chat_buffer_events()
+    vim.api.nvim_create_autocmd("BufWinEnter", {
+        buffer = self.widget.buf_nrs.chat,
+        callback = function()
+            local winid = vim.api.nvim_get_current_win()
+            self.chat_folds:on_buf_win_enter(winid)
+        end,
+    })
 end
 
 --- @param update agentic.acp.SessionUpdateMessage
@@ -686,11 +710,12 @@ function SessionManager:_handle_input_submit(input_text)
 end
 
 --- Create a new session, optionally cancelling any existing one
---- @param opts {restore_mode?: boolean, on_created?: fun()}|nil
+--- @param opts {restore_mode?: boolean, on_created?: fun(), on_failed?: fun()|nil}|nil
 function SessionManager:new_session(opts)
     opts = opts or {}
     local restore_mode = opts.restore_mode or false
     local on_created = opts.on_created
+    local on_failed = opts.on_failed
     if not restore_mode then
         self:_cancel_session()
     end
@@ -755,6 +780,9 @@ function SessionManager:new_session(opts)
         if err or not response then
             -- no log here, already logged in create_session
             self.session_id = nil
+            if on_failed then
+                on_failed()
+            end
             return
         end
 
@@ -819,6 +847,9 @@ function SessionManager:_cancel_session()
         -- Otherwise, it clears selections and files when opening for the first time
         self.agent:cancel_session(self.session_id)
         self.widget:clear()
+        if self.chat_folds and self.chat_folds.reset then
+            self.chat_folds:reset()
+        end
         self.todo_list:clear()
         self.file_list:clear()
         self.code_selection:clear()
@@ -832,6 +863,10 @@ function SessionManager:_cancel_session()
 
     self.chat_history = ChatHistory:new()
     self._history_to_send = nil
+end
+
+function SessionManager:cancel_current_session()
+    self:_cancel_session()
 end
 
 --- Switch to a different ACP provider while preserving chat UI and history.
@@ -1123,6 +1158,9 @@ function SessionManager:restore_from_history(history, opts)
                     self.message_writer,
                     self._history_to_send
                 )
+            end,
+            on_failed = function()
+                self._restoring = false
             end,
         })
     end
