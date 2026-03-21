@@ -377,4 +377,27 @@ function ChatFolds:on_buf_win_enter(winid)
     self:sync_pending(winid)
 end
 
+--- @param winid integer
+--- @param tool_call_id string
+--- @return boolean|nil fold_state
+function ChatFolds:get_fold_state_for_tool_call(winid, tool_call_id)
+    local tool_call_fold = self._tool_call_folds[tool_call_id]
+    if not tool_call_fold then
+        return nil
+    end
+
+    local body_start_row =
+        select(1, self:_resolve_body_range(tool_call_fold.extmark_id))
+    if not body_start_row then
+        return nil
+    end
+
+    return self:_get_fold_state(winid, body_start_row + 1)
+end
+
+--- @return integer pending_count
+function ChatFolds:get_pending_count()
+    return vim.tbl_count(self._pending_tool_call_ids)
+end
+
 return ChatFolds
