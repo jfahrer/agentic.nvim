@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch
+--- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch, need-check-nil
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
@@ -263,6 +263,127 @@ describe("agentic.SessionManager", function()
                 assert.equal(test_winid, on_buf_win_enter_spy.calls[1][2])
             end
         )
+    end)
+
+    describe("hidden tool-call updates", function()
+        --- @type TestStub
+        local get_instance_stub
+        --- @type agentic.SessionManager|nil
+        local session
+        --- @type agentic.UserConfig.Folding|nil
+        local original_folding
+        --- @type agentic.UserConfig.AutoScroll|nil
+        local original_auto_scroll
+
+        before_each(function()
+            local AgentInstance = require("agentic.acp.agent_instance")
+
+            original_folding = Config.folding
+            original_auto_scroll = Config.auto_scroll
+            Config.auto_scroll = { threshold = 0 }
+            Config.folding = {
+                tool_calls = {
+                    enabled = true,
+                    min_lines = 3,
+                    kinds = {
+                        fetch = {
+                            enabled = true,
+                            min_lines = 3,
+                        },
+                    },
+                },
+            }
+
+            get_instance_stub = spy.stub(AgentInstance, "get_instance")
+            get_instance_stub:returns({
+                provider_config = { name = "Benchmark" },
+            })
+
+            session = SessionManager:new(vim.api.nvim_get_current_tabpage())
+        end)
+
+        after_each(function()
+            Config.folding = original_folding
+            Config.auto_scroll = original_auto_scroll
+
+            if session then
+                pcall(function()
+                    session:destroy()
+                end)
+                session = nil
+            end
+
+            get_instance_stub:revert()
+        end)
+
+        it("folds hidden updates after reopening the widget", function()
+            assert.is_not_nil(session)
+
+            session.widget:show({ focus_prompt = false })
+            session.message_writer:write_tool_call_block({
+                tool_call_id = "hidden-grow",
+                kind = "fetch",
+                argument = "url",
+                status = "completed",
+                body = { "line 1" },
+            })
+
+            assert.is_nil(
+                session.chat_folds:get_fold_state_for_tool_call(
+                    session.widget.win_nrs.chat,
+                    "hidden-grow"
+                )
+            )
+
+            session.widget:hide()
+            session.message_writer:update_tool_call_block({
+                tool_call_id = "hidden-grow",
+                status = "completed",
+                body = { "line 2", "line 3", "line 4" },
+            })
+
+            assert.equal(1, session.chat_folds:get_pending_count())
+
+            session.widget:show({ focus_prompt = false })
+
+            assert.is_true(
+                session.chat_folds:get_fold_state_for_tool_call(
+                    session.widget.win_nrs.chat,
+                    "hidden-grow"
+                )
+            )
+            assert.equal(0, session.chat_folds:get_pending_count())
+        end)
+
+        it("preserves existing closed folds after reopening the widget", function()
+            assert.is_not_nil(session)
+
+            session.widget:show({ focus_prompt = false })
+            session.message_writer:write_tool_call_block({
+                tool_call_id = "keep-closed",
+                kind = "fetch",
+                argument = "url",
+                status = "completed",
+                body = { "line 1", "line 2", "line 3" },
+            })
+
+            assert.is_true(
+                session.chat_folds:get_fold_state_for_tool_call(
+                    session.widget.win_nrs.chat,
+                    "keep-closed"
+                )
+            )
+
+            session.widget:hide()
+            session.widget:show({ focus_prompt = false })
+
+            assert.is_true(
+                session.chat_folds:get_fold_state_for_tool_call(
+                    session.widget.win_nrs.chat,
+                    "keep-closed"
+                )
+            )
+        end)
     end)
 
     describe("switch_provider", function()

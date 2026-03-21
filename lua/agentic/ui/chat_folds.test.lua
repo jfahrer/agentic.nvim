@@ -285,6 +285,99 @@ describe("agentic.ui.ChatFolds", function()
     end)
 
     it(
+        "folds after a hidden update grows a completed response past the threshold",
+        function()
+            writer:write_tool_call_block(
+                make_block("fetch-hidden-grow", "fetch", "completed", 1)
+            )
+
+            local initial_body_line = get_body_info("fetch-hidden-grow")
+            assert.is_nil(chat_folds:_get_fold_state(winid, initial_body_line))
+
+            vim.api.nvim_win_close(winid, true)
+
+            writer:update_tool_call_block({
+                tool_call_id = "fetch-hidden-grow",
+                status = "completed",
+                body = { "line 2", "line 3", "line 4" },
+            })
+
+            assert.is_true(
+                chat_folds._pending_tool_call_ids["fetch-hidden-grow"]
+            )
+
+            winid = vim.api.nvim_open_win(bufnr, true, {
+                relative = "editor",
+                width = 80,
+                height = 40,
+                row = 0,
+                col = 0,
+            })
+
+            chat_folds:on_buf_win_enter(winid)
+
+            local updated_body_line = get_body_info("fetch-hidden-grow")
+            assert.is_true(chat_folds:_get_fold_state(winid, updated_body_line))
+        end
+    )
+
+    it("preserves a user-opened fold across hidden updates", function()
+        writer:write_tool_call_block(
+            make_block("fetch-user-open", "fetch", "completed", 3)
+        )
+
+        local body_line = get_body_info("fetch-user-open")
+        set_fold_state(body_line, false)
+        chat_folds:remember_visible_window_states()
+
+        vim.api.nvim_win_close(winid, true)
+
+        writer:update_tool_call_block({
+            tool_call_id = "fetch-user-open",
+            status = "completed",
+            body = { "line 4", "line 5" },
+        })
+
+        winid = vim.api.nvim_open_win(bufnr, true, {
+            relative = "editor",
+            width = 80,
+            height = 40,
+            row = 0,
+            col = 0,
+        })
+
+        chat_folds:on_buf_win_enter(winid)
+
+        body_line = get_body_info("fetch-user-open")
+        assert.is_false(chat_folds:_get_fold_state(winid, body_line))
+    end)
+
+    it("recreates previously closed folds when reopening the window", function()
+        writer:write_tool_call_block(
+            make_block("fetch-closed-reopen", "fetch", "completed", 3)
+        )
+
+        local body_line = get_body_info("fetch-closed-reopen")
+        assert.is_true(chat_folds:_get_fold_state(winid, body_line))
+
+        chat_folds:remember_visible_window_states()
+        vim.api.nvim_win_close(winid, true)
+
+        winid = vim.api.nvim_open_win(bufnr, true, {
+            relative = "editor",
+            width = 80,
+            height = 40,
+            row = 0,
+            col = 0,
+        })
+
+        chat_folds:on_buf_win_enter(winid)
+
+        body_line = get_body_info("fetch-closed-reopen")
+        assert.is_true(chat_folds:_get_fold_state(winid, body_line))
+    end)
+
+    it(
         "preserves restored fold state when reopening the chat window",
         function()
             writer:write_tool_call_block(

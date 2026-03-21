@@ -14,6 +14,7 @@ local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
 --- @field status agentic.acp.ToolCallStatus
 --- @field policy agentic.ui.ChatFolds.Policy
 --- @field default_closed? boolean
+--- @field last_known_fold_state? boolean
 
 --- @class agentic.ui.ChatFolds
 --- @field bufnr integer
@@ -156,7 +157,6 @@ end
 function ChatFolds:_configure_window(winid)
     vim.api.nvim_set_option_value("foldmethod", "manual", { win = winid })
     vim.api.nvim_set_option_value("foldenable", true, { win = winid })
-    vim.api.nvim_set_option_value("foldlevel", 99, { win = winid })
     vim.api.nvim_set_option_value(
         "foldtext",
         "v:lua.require'agentic.ui.chat_folds'.foldtext()",
@@ -187,8 +187,12 @@ function ChatFolds:_capture_window_fold_states(winid)
             self:_resolve_body_range(tool_call_fold.extmark_id)
 
         if body_start_row and body_line_count and body_line_count > 0 then
-            fold_states[tool_call_id] =
-                self:_get_fold_state(winid, body_start_row + 1)
+            local fold_state = self:_get_fold_state(winid, body_start_row + 1)
+            fold_states[tool_call_id] = fold_state
+
+            if fold_state ~= nil then
+                tool_call_fold.last_known_fold_state = fold_state
+            end
         end
     end
 
@@ -260,6 +264,12 @@ function ChatFolds:restore_visible_window_states()
     self._captured_window_states = nil
 end
 
+function ChatFolds:remember_visible_window_states()
+    for _, winid in ipairs(self:_get_visible_windows()) do
+        self:_capture_window_fold_states(winid)
+    end
+end
+
 --- @param winid integer
 --- @param tool_call_fold agentic.ui.ChatFolds.ToolCallFold
 function ChatFolds:_sync_fold_to_window(winid, tool_call_fold)
@@ -309,16 +319,17 @@ end
 
 --- @param tool_call_fold agentic.ui.ChatFolds.ToolCallFold
 function ChatFolds:_decide_default_state(tool_call_fold)
-    if tool_call_fold.default_closed ~= nil then
-        return
-    end
-
     if tool_call_fold.status == "failed" then
         tool_call_fold.default_closed = false
         return
     end
 
     if tool_call_fold.status ~= "completed" then
+        return
+    end
+
+    if tool_call_fold.last_known_fold_state ~= nil then
+        tool_call_fold.default_closed = tool_call_fold.last_known_fold_state
         return
     end
 
@@ -364,6 +375,27 @@ function ChatFolds:sync_pending(winid)
 end
 
 --- @param winid integer
+function ChatFolds:sync_reopen_states(winid)
+    for _, tool_call_fold in pairs(self._tool_call_folds) do
+        local should_restore = tool_call_fold.last_known_fold_state ~= nil
+
+        if should_restore then
+            local body_start_row, _, body_line_count =
+                self:_resolve_body_range(tool_call_fold.extmark_id)
+
+            if body_start_row and body_line_count and body_line_count > 0 then
+                local existing_fold_state =
+                    self:_get_fold_state(winid, body_start_row + 1)
+
+                if existing_fold_state == nil then
+                    self:_sync_fold_to_window(winid, tool_call_fold)
+                end
+            end
+        end
+    end
+end
+
+--- @param winid integer
 function ChatFolds:on_buf_win_enter(winid)
     if not vim.api.nvim_win_is_valid(winid) then
         return
@@ -374,6 +406,7 @@ function ChatFolds:on_buf_win_enter(winid)
     end
 
     self:_configure_window(winid)
+    self:sync_reopen_states(winid)
     self:sync_pending(winid)
 end
 
