@@ -211,6 +211,60 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
+    describe("_bind_chat_buffer_events", function()
+        --- @type integer
+        local test_bufnr
+        --- @type integer
+        local test_winid
+
+        before_each(function()
+            test_bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(test_bufnr, 0, -1, false, {})
+            test_winid = vim.api.nvim_open_win(test_bufnr, true, {
+                relative = "editor",
+                width = 40,
+                height = 10,
+                row = 0,
+                col = 0,
+            })
+        end)
+
+        after_each(function()
+            if test_winid and vim.api.nvim_win_is_valid(test_winid) then
+                vim.api.nvim_win_close(test_winid, true)
+            end
+
+            if test_bufnr and vim.api.nvim_buf_is_valid(test_bufnr) then
+                vim.api.nvim_buf_delete(test_bufnr, { force = true })
+            end
+        end)
+
+        it(
+            "routes BufWinEnter through ChatFolds for the chat buffer",
+            function()
+                local on_buf_win_enter_spy = spy.new(function() end)
+
+                local session = {
+                    widget = { buf_nrs = { chat = test_bufnr } },
+                    chat_folds = {
+                        on_buf_win_enter = on_buf_win_enter_spy,
+                    },
+                    _bind_chat_buffer_events = SessionManager._bind_chat_buffer_events,
+                } --[[@as agentic.SessionManager]]
+
+                session:_bind_chat_buffer_events()
+
+                vim.api.nvim_exec_autocmds("BufWinEnter", {
+                    buffer = test_bufnr,
+                    modeline = false,
+                })
+
+                assert.spy(on_buf_win_enter_spy).was.called(1)
+                assert.equal(test_winid, on_buf_win_enter_spy.calls[1][2])
+            end
+        )
+    end)
+
     describe("switch_provider", function()
         --- @type TestStub
         local notify_stub
@@ -427,7 +481,7 @@ describe("agentic.SessionManager", function()
 
     describe("FileChangedShell autocommand", function()
         local Child = require("tests.helpers.child")
-        local child = Child:new()
+        local child = Child.new()
 
         before_each(function()
             child.setup()

@@ -1,0 +1,354 @@
+--- @diagnostic disable: invisible
+local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
+local Config = require("agentic.config")
+
+describe("agentic.ui.ChatFolds", function()
+    --- @type agentic.ui.ChatFolds
+    local ChatFolds
+    --- @type agentic.ui.MessageWriter
+    local MessageWriter
+    --- @type integer
+    local bufnr
+    --- @type integer
+    local winid
+    --- @type agentic.ui.MessageWriter
+    local writer
+    --- @type agentic.ui.ChatFolds
+    local chat_folds
+    --- @type agentic.UserConfig.Folding|nil
+    local original_folding
+    --- @type agentic.UserConfig.AutoScroll|nil
+    local original_auto_scroll
+
+    --- @param count integer
+    --- @param prefix string|nil
+    --- @return string[] body
+    local function make_body(count, prefix)
+        local body = {}
+        local label = prefix or "line"
+
+        for i = 1, count do
+            body[i] = string.format("%s %d", label, i)
+        end
+
+        return body
+    end
+
+    --- @param id string
+    --- @param kind agentic.acp.ToolKind
+    --- @param status agentic.acp.ToolCallStatus
+    --- @param line_count integer
+    --- @return agentic.ui.MessageWriter.ToolCallBlock
+    local function make_block(id, kind, status, line_count)
+        return {
+            tool_call_id = id,
+            kind = kind,
+            argument = kind .. "-arg",
+            status = status,
+            body = make_body(line_count, id),
+        }
+    end
+
+    --- @param tool_call_id string
+    --- @return integer body_line
+    --- @return integer header_line
+    --- @return integer body_line_count
+    local function get_body_info(tool_call_id)
+        local state = chat_folds._tool_call_folds[tool_call_id]
+        local body_start_row, _, body_line_count =
+            chat_folds:_resolve_body_range(state.extmark_id)
+
+        assert.is_not_nil(body_start_row)
+        assert.is_not_nil(body_line_count)
+
+        --- @cast body_start_row integer
+        --- @cast body_line_count integer
+
+        return body_start_row + 1, body_start_row, body_line_count
+    end
+
+    --- @param line integer
+    --- @param close_fold boolean
+    local function set_fold_state(line, close_fold)
+        vim.api.nvim_win_call(winid, function()
+            vim.api.nvim_win_set_cursor(0, { line, 0 })
+            if close_fold then
+                vim.cmd("silent! normal! zc")
+            else
+                vim.cmd("silent! normal! zo")
+            end
+        end)
+    end
+
+    before_each(function()
+        original_folding = Config.folding
+        original_auto_scroll = Config.auto_scroll
+        Config.folding = {
+            tool_calls = {
+                enabled = true,
+                min_lines = 3,
+                kinds = {
+                    fetch = {
+                        enabled = true,
+                        min_lines = 2,
+                    },
+                    execute = {
+                        enabled = true,
+                        min_lines = 4,
+                    },
+                    edit = {
+                        enabled = false,
+                    },
+                },
+            },
+        }
+        Config.auto_scroll = { threshold = 0 }
+
+        ChatFolds = require("agentic.ui.chat_folds")
+        MessageWriter = require("agentic.ui.message_writer")
+
+        bufnr = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
+
+        winid = vim.api.nvim_open_win(bufnr, true, {
+            relative = "editor",
+            width = 80,
+            height = 40,
+            row = 0,
+            col = 0,
+        })
+
+        writer = MessageWriter:new(bufnr)
+        chat_folds = ChatFolds:new(bufnr)
+        writer:set_chat_folds(chat_folds)
+        chat_folds:on_buf_win_enter(winid)
+    end)
+
+    after_each(function()
+        Config.folding = original_folding --- @diagnostic disable-line: assign-type-mismatch
+        Config.auto_scroll = original_auto_scroll --- @diagnostic disable-line: assign-type-mismatch
+
+        for _, visible_winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+            if vim.api.nvim_win_is_valid(visible_winid) then
+                vim.api.nvim_win_close(visible_winid, true)
+            end
+        end
+
+        if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end
+    end)
+
+    it("creates a body-only fold with custom fold text", function()
+        writer:write_tool_call_block(
+            make_block("fetch-1", "fetch", "completed", 3)
+        )
+
+        local body_line, header_line, body_line_count = get_body_info("fetch-1")
+
+        assert.equal(3, body_line_count)
+        assert.equal(0, vim.fn.foldlevel(header_line))
+        assert.equal(body_line, vim.fn.foldclosed(body_line))
+        assert.equal(
+            "response hidden (3 lines)",
+            vim.fn.foldtextresult(body_line)
+        )
+    end)
+
+    it("applies family and per-kind folding thresholds", function()
+        Config.folding = {
+            tool_calls = {
+                enabled = true,
+                min_lines = 20,
+                kinds = {
+                    fetch = {
+                        enabled = true,
+                        min_lines = 8,
+                    },
+                    execute = {
+                        enabled = true,
+                        min_lines = 12,
+                    },
+                    edit = {
+                        enabled = false,
+                    },
+                },
+            },
+        }
+
+        writer:write_tool_call_block(
+            make_block("fetch-8", "fetch", "completed", 8)
+        )
+        writer:write_tool_call_block(
+            make_block("read-19", "read", "completed", 19)
+        )
+        writer:write_tool_call_block(
+            make_block("execute-12", "execute", "completed", 12)
+        )
+        writer:write_tool_call_block(
+            make_block("edit-40", "edit", "completed", 40)
+        )
+
+        local fetch_body_line = get_body_info("fetch-8")
+        local read_body_line = get_body_info("read-19")
+        local execute_body_line = get_body_info("execute-12")
+        local edit_body_line = get_body_info("edit-40")
+
+        assert.is_true(chat_folds:_get_fold_state(winid, fetch_body_line))
+        assert.is_nil(chat_folds:_get_fold_state(winid, read_body_line))
+        assert.is_true(chat_folds:_get_fold_state(winid, execute_body_line))
+        assert.is_nil(chat_folds:_get_fold_state(winid, edit_body_line))
+
+        Config.folding.tool_calls.enabled = false
+        writer:write_tool_call_block(
+            make_block("fetch-disabled", "fetch", "completed", 20)
+        )
+
+        local disabled_body_line = get_body_info("fetch-disabled")
+        assert.is_nil(chat_folds:_get_fold_state(winid, disabled_body_line))
+    end)
+
+    it("waits for completion and skips failed tool calls", function()
+        writer:write_tool_call_block(
+            make_block("execute-pending", "execute", "in_progress", 5)
+        )
+        writer:write_tool_call_block(
+            make_block("execute-failed", "execute", "in_progress", 5)
+        )
+
+        local pending_body_line = get_body_info("execute-pending")
+        local failed_body_line = get_body_info("execute-failed")
+
+        assert.is_nil(chat_folds:_get_fold_state(winid, pending_body_line))
+        assert.is_nil(chat_folds:_get_fold_state(winid, failed_body_line))
+
+        writer:update_tool_call_block({
+            tool_call_id = "execute-pending",
+            status = "completed",
+        })
+        writer:update_tool_call_block({
+            tool_call_id = "execute-failed",
+            status = "failed",
+        })
+
+        pending_body_line = get_body_info("execute-pending")
+        local failed_updated_body_line = get_body_info("execute-failed")
+
+        assert.is_true(chat_folds:_get_fold_state(winid, pending_body_line))
+        assert.is_nil(
+            chat_folds:_get_fold_state(winid, failed_updated_body_line)
+        )
+    end)
+
+    it("keeps user-opened and user-closed folds on later updates", function()
+        writer:write_tool_call_block(
+            make_block("execute-open", "execute", "completed", 4)
+        )
+        writer:write_tool_call_block(
+            make_block("execute-closed", "execute", "completed", 4)
+        )
+
+        local open_body_line = get_body_info("execute-open")
+        local closed_body_line = get_body_info("execute-closed")
+
+        set_fold_state(open_body_line, false)
+        set_fold_state(closed_body_line, false)
+        set_fold_state(closed_body_line, true)
+
+        writer:update_tool_call_block({
+            tool_call_id = "execute-open",
+            status = "completed",
+            body = { "execute-open extra" },
+        })
+        writer:update_tool_call_block({
+            tool_call_id = "execute-closed",
+            status = "completed",
+            body = { "execute-closed extra" },
+        })
+
+        open_body_line = get_body_info("execute-open")
+        closed_body_line = get_body_info("execute-closed")
+
+        assert.is_false(chat_folds:_get_fold_state(winid, open_body_line))
+        assert.is_true(chat_folds:_get_fold_state(winid, closed_body_line))
+    end)
+
+    it("does not move the cursor when applying a fold", function()
+        vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+        writer:write_tool_call_block(
+            make_block("fetch-cursor", "fetch", "completed", 3)
+        )
+
+        assert.same({ 1, 0 }, vim.api.nvim_win_get_cursor(winid))
+    end)
+
+    it(
+        "preserves restored fold state when reopening the chat window",
+        function()
+            writer:write_tool_call_block(
+                make_block("fetch-reopen", "fetch", "completed", 3)
+            )
+
+            local body_line = get_body_info("fetch-reopen")
+            set_fold_state(body_line, false)
+            assert.is_false(chat_folds:_get_fold_state(winid, body_line))
+
+            vim.api.nvim_win_close(winid, true)
+
+            winid = vim.api.nvim_open_win(bufnr, true, {
+                relative = "editor",
+                width = 80,
+                height = 40,
+                row = 0,
+                col = 0,
+            })
+
+            chat_folds:on_buf_win_enter(winid)
+
+            assert.is_false(chat_folds:_get_fold_state(winid, body_line))
+        end
+    )
+
+    it(
+        "backfills only pending folds when the chat buffer becomes visible again",
+        function()
+            writer:write_tool_call_block(
+                make_block("fetch-live", "fetch", "completed", 3)
+            )
+            local live_body_line = get_body_info("fetch-live")
+            set_fold_state(live_body_line, false)
+
+            vim.api.nvim_win_close(winid, true)
+
+            writer:write_tool_call_block(
+                make_block("fetch-pending", "fetch", "completed", 3)
+            )
+
+            assert.is_true(chat_folds._pending_tool_call_ids["fetch-pending"])
+            assert.is_nil(chat_folds._pending_tool_call_ids["fetch-live"])
+
+            winid = vim.api.nvim_open_win(bufnr, true, {
+                relative = "editor",
+                width = 80,
+                height = 40,
+                row = 0,
+                col = 0,
+            })
+
+            local sync_spy = spy.on(chat_folds, "_sync_fold_to_window")
+            chat_folds:on_buf_win_enter(winid)
+
+            assert.equal(1, sync_spy.call_count)
+            assert.equal("fetch-pending", sync_spy.calls[1][3].tool_call_id)
+
+            local pending_body_line = get_body_info("fetch-pending")
+            assert.is_false(chat_folds:_get_fold_state(winid, live_body_line))
+            assert.is_true(chat_folds:_get_fold_state(winid, pending_body_line))
+            assert.is_nil(chat_folds._pending_tool_call_ids["fetch-pending"])
+
+            sync_spy:revert()
+        end
+    )
+end)

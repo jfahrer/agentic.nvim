@@ -52,6 +52,7 @@ end
 --- @field widget agentic.ui.ChatWidget
 --- @field agent agentic.acp.ACPClient
 --- @field message_writer agentic.ui.MessageWriter
+--- @field chat_folds agentic.ui.ChatFolds
 --- @field permission_manager agentic.ui.PermissionManager
 --- @field status_animation agentic.ui.StatusAnimation
 --- @field file_list agentic.ui.FileList
@@ -91,6 +92,7 @@ end
 function SessionManager:new(tab_page_id)
     local AgentInstance = require("agentic.acp.agent_instance")
     local ChatWidget = require("agentic.ui.chat_widget")
+    local ChatFolds = require("agentic.ui.chat_folds")
     local CodeSelection = require("agentic.ui.code_selection")
     local FileList = require("agentic.ui.file_list")
     local FilePicker = require("agentic.ui.file_picker")
@@ -131,8 +133,12 @@ function SessionManager:new(tab_page_id)
     end)
 
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
+    self.chat_folds = ChatFolds:new(self.widget.buf_nrs.chat)
+    self.message_writer:set_chat_folds(self.chat_folds)
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.permission_manager = PermissionManager:new(self.message_writer)
+
+    self:_bind_chat_buffer_events()
 
     FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
@@ -199,6 +205,16 @@ function SessionManager:new(tab_page_id)
     end)
 
     return self
+end
+
+function SessionManager:_bind_chat_buffer_events()
+    vim.api.nvim_create_autocmd("BufWinEnter", {
+        buffer = self.widget.buf_nrs.chat,
+        callback = function()
+            local winid = vim.api.nvim_get_current_win()
+            self.chat_folds:on_buf_win_enter(winid)
+        end,
+    })
 end
 
 --- @param update agentic.acp.SessionUpdateMessage
