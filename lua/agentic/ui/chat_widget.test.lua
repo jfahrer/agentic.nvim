@@ -105,6 +105,16 @@ describe("agentic.ui.ChatWidget", function()
                 assert.is_true(vim.api.nvim_buf_is_valid(input_buf))
             end)
 
+            it("hide() calls the on_before_hide callback", function()
+                local before_hide_spy = spy.new(function() end)
+                widget:set_on_before_hide(before_hide_spy)
+                widget:show()
+
+                widget:hide()
+
+                assert.is_true(before_hide_spy.call_count > 0)
+            end)
+
             it("show() is idempotent when called multiple times", function()
                 widget:show()
                 local first_chat_win = widget.win_nrs.chat
@@ -114,6 +124,22 @@ describe("agentic.ui.ChatWidget", function()
                 assert.equal(first_chat_win, widget.win_nrs.chat)
                 assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.chat))
             end)
+
+            it(
+                "show() calls the on_after_show callback with the chat window",
+                function()
+                    local after_show_spy = spy.new(function() end)
+                    widget:set_on_after_show(after_show_spy)
+
+                    widget:show({ focus_prompt = false })
+
+                    assert.spy(after_show_spy).was.called(1)
+                    assert.equal(
+                        widget.win_nrs.chat,
+                        after_show_spy.calls[1][1]
+                    )
+                end
+            )
 
             it("hide() is safe when called multiple times", function()
                 widget:show()
