@@ -89,15 +89,10 @@ function MessageWriter:_sync_tool_call_fold(tool_call_block)
     end
 end
 
-function MessageWriter:_capture_fold_states()
+--- @param tool_call_id string
+function MessageWriter:_capture_tool_call_fold_state(tool_call_id)
     if self._chat_folds then
-        self._chat_folds:capture_visible_window_states()
-    end
-end
-
-function MessageWriter:_restore_fold_states()
-    if self._chat_folds then
-        self._chat_folds:restore_visible_window_states()
+        self._chat_folds:capture_visible_tool_call_state(tool_call_id)
     end
 end
 
@@ -259,7 +254,6 @@ end
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
     self:_auto_scroll(self.bufnr)
-    self:_capture_fold_states()
 
     self:_with_modifiable_and_notify_change(function(bufnr)
         local kind = tool_call_block.kind
@@ -305,7 +299,6 @@ function MessageWriter:write_tool_call_block(tool_call_block)
 
         self:_append_lines({ "", "" })
         self:_sync_tool_call_fold(tool_call_block)
-        self:_restore_fold_states()
     end)
 end
 
@@ -369,7 +362,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         return
     end
 
-    self:_capture_fold_states()
+    self:_capture_tool_call_fold_state(tool_call_block.tool_call_id)
 
     self:_with_modifiable_and_notify_change(function(bufnr)
         -- Diff blocks don't change after the initial render
@@ -405,7 +398,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             )
 
             self:_sync_tool_call_fold(tracker)
-            self:_restore_fold_states()
 
             return false
         end
@@ -461,7 +453,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         )
 
         self:_sync_tool_call_fold(tracker)
-        self:_restore_fold_states()
     end)
 end
 

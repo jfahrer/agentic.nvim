@@ -1,6 +1,7 @@
 --- @diagnostic disable: invisible
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local ACPPayloads = require("agentic.acp.acp_payloads")
 local Config = require("agentic.config")
 
 describe("agentic.ui.ChatFolds", function()
@@ -285,6 +286,29 @@ describe("agentic.ui.ChatFolds", function()
     end)
 
     it(
+        "preserves the current window view when applying a visible fold",
+        function()
+            writer:write_message(
+                ACPPayloads.generate_agent_message(
+                    table.concat(make_body(25, "intro"), "\n")
+                )
+            )
+
+            vim.api.nvim_win_set_cursor(winid, { 10, 0 })
+            vim.cmd("normal! zt")
+            local before_view = vim.fn.winsaveview()
+
+            writer:write_tool_call_block(
+                make_block("fetch-view", "fetch", "completed", 20)
+            )
+
+            local after_view = vim.fn.winsaveview()
+            assert.equal(before_view.lnum, after_view.lnum)
+            assert.equal(before_view.topline, after_view.topline)
+        end
+    )
+
+    it(
         "folds after a hidden update grows a completed response past the threshold",
         function()
             writer:write_tool_call_block(
@@ -314,10 +338,16 @@ describe("agentic.ui.ChatFolds", function()
                 col = 0,
             })
 
+            local before_view = vim.fn.winsaveview()
+
             chat_folds:on_buf_win_enter(winid)
+
+            local after_view = vim.fn.winsaveview()
 
             local updated_body_line = get_body_info("fetch-hidden-grow")
             assert.is_true(chat_folds:_get_fold_state(winid, updated_body_line))
+            assert.equal(before_view.lnum, after_view.lnum)
+            assert.equal(before_view.topline, after_view.topline)
         end
     )
 

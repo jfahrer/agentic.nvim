@@ -355,35 +355,38 @@ describe("agentic.SessionManager", function()
             assert.equal(0, session.chat_folds:get_pending_count())
         end)
 
-        it("preserves existing closed folds after reopening the widget", function()
-            assert.is_not_nil(session)
+        it(
+            "preserves existing closed folds after reopening the widget",
+            function()
+                assert.is_not_nil(session)
 
-            session.widget:show({ focus_prompt = false })
-            session.message_writer:write_tool_call_block({
-                tool_call_id = "keep-closed",
-                kind = "fetch",
-                argument = "url",
-                status = "completed",
-                body = { "line 1", "line 2", "line 3" },
-            })
+                session.widget:show({ focus_prompt = false })
+                session.message_writer:write_tool_call_block({
+                    tool_call_id = "keep-closed",
+                    kind = "fetch",
+                    argument = "url",
+                    status = "completed",
+                    body = { "line 1", "line 2", "line 3" },
+                })
 
-            assert.is_true(
-                session.chat_folds:get_fold_state_for_tool_call(
-                    session.widget.win_nrs.chat,
-                    "keep-closed"
+                assert.is_true(
+                    session.chat_folds:get_fold_state_for_tool_call(
+                        session.widget.win_nrs.chat,
+                        "keep-closed"
+                    )
                 )
-            )
 
-            session.widget:hide()
-            session.widget:show({ focus_prompt = false })
+                session.widget:hide()
+                session.widget:show({ focus_prompt = false })
 
-            assert.is_true(
-                session.chat_folds:get_fold_state_for_tool_call(
-                    session.widget.win_nrs.chat,
-                    "keep-closed"
+                assert.is_true(
+                    session.chat_folds:get_fold_state_for_tool_call(
+                        session.widget.win_nrs.chat,
+                        "keep-closed"
+                    )
                 )
-            )
-        end)
+            end
+        )
     end)
 
     describe("switch_provider", function()
