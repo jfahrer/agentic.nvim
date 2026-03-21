@@ -53,6 +53,18 @@
 --- @field prompt table<string, agentic.UserConfig.KeymapValue>
 --- @field diff_preview table<string, string>
 
+--- @class agentic.UserConfig.ToolCallFoldingKind
+--- @field enabled? boolean
+--- @field min_lines? integer
+
+--- @class agentic.UserConfig.ToolCallFolding
+--- @field enabled boolean
+--- @field min_lines integer
+--- @field kinds table<string, agentic.UserConfig.ToolCallFoldingKind>
+
+--- @class agentic.UserConfig.Folding
+--- @field tool_calls agentic.UserConfig.ToolCallFolding
+
 --- Window options passed to nvim_set_option_value
 --- Overrides default options (wrap, linebreak, winfixbuf, winfixheight)
 --- @alias agentic.UserConfig.WinOpts table<string, any>
@@ -387,6 +399,28 @@ local ConfigDefault = {
 
     auto_scroll = {
         threshold = 10,
+    },
+
+    --- Configure native folds for noisy tool call responses in the chat buffer
+    --- @type agentic.UserConfig.Folding
+    folding = {
+        tool_calls = {
+            enabled = true,
+            min_lines = 20,
+            kinds = {
+                fetch = {
+                    enabled = true,
+                    min_lines = 8,
+                },
+                execute = {
+                    enabled = true,
+                    min_lines = 12,
+                },
+                edit = {
+                    enabled = false,
+                },
+            },
+        },
     },
 
     diff_preview = {

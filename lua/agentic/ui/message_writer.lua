@@ -41,6 +41,7 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
 --- @field tool_call_blocks table<string, agentic.ui.MessageWriter.ToolCallBlock>
+--- @field _chat_folds? agentic.ui.ChatFolds
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled boolean
@@ -83,6 +84,11 @@ function MessageWriter:set_provider_name(name)
     self._provider_name = name
 end
 
+--- @param chat_folds agentic.ui.ChatFolds|nil
+function MessageWriter:set_chat_folds(chat_folds)
+    self._chat_folds = chat_folds
+end
+
 --- Resets sender tracking so the next message writes a fresh header
 function MessageWriter:reset_sender_tracking()
     self._last_sender = nil
@@ -111,6 +117,20 @@ end
 function MessageWriter:_notify_content_changed()
     if self._on_content_changed then
         self._on_content_changed()
+    end
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+function MessageWriter:_sync_tool_call_fold(tool_call_block)
+    if self._chat_folds then
+        self._chat_folds:sync_tool_call(tool_call_block)
+    end
+end
+
+--- @param tool_call_id string
+function MessageWriter:_capture_tool_call_fold_state(tool_call_id)
+    if self._chat_folds then
+        self._chat_folds:capture_visible_tool_call_state(tool_call_id)
     end
 end
 
@@ -431,6 +451,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         self:_apply_status_footer(end_row, tool_call_block.status)
 
         self:_append_lines({ "", "" })
+        self:_sync_tool_call_fold(tool_call_block)
     end)
 end
 
@@ -494,6 +515,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         return
     end
 
+    self:_capture_tool_call_fold_state(tool_call_block.tool_call_id)
+
     self:_with_modifiable_and_notify_change(function(bufnr)
         -- Diff blocks don't change after the initial render
         -- only update status highlights - don't replace content
@@ -526,6 +549,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 old_end_row,
                 tracker.status
             )
+
+            self:_sync_tool_call_fold(tracker)
 
             return false
         end
@@ -575,6 +600,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             new_end_row,
             tracker.status
         )
+
+        self:_sync_tool_call_fold(tracker)
     end)
 end
 

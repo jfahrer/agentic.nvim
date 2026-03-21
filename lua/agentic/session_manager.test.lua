@@ -1,8 +1,9 @@
---- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch
+--- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch, need-check-nil
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
 local AgentModes = require("agentic.acp.agent_modes")
+local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionManager = require("agentic.session_manager")
 
@@ -210,26 +211,284 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
-    describe("FileChangedShell autocommand", function()
-        local Child = require("tests.helpers.child")
-        local child = Child:new()
+    describe("_bind_chat_buffer_events", function()
+        --- @type integer
+        local test_bufnr
+        --- @type integer
+        local test_winid
 
         before_each(function()
-            child.setup()
+            test_bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(test_bufnr, 0, -1, false, {})
+            test_winid = vim.api.nvim_open_win(test_bufnr, true, {
+                relative = "editor",
+                width = 40,
+                height = 10,
+                row = 0,
+                col = 0,
+            })
         end)
 
         after_each(function()
-            child.stop()
+            if test_winid and vim.api.nvim_win_is_valid(test_winid) then
+                vim.api.nvim_win_close(test_winid, true)
+            end
+
+            if test_bufnr and vim.api.nvim_buf_is_valid(test_bufnr) then
+                vim.api.nvim_buf_delete(test_bufnr, { force = true })
+            end
+        end)
+
+        it(
+            "routes BufWinEnter through ChatFolds for the chat buffer",
+            function()
+                local on_buf_win_enter_spy = spy.new(function() end)
+
+                local session = {
+                    widget = { buf_nrs = { chat = test_bufnr } },
+                    chat_folds = {
+                        on_buf_win_enter = on_buf_win_enter_spy,
+                    },
+                    _bind_chat_buffer_events = SessionManager._bind_chat_buffer_events,
+                } --[[@as agentic.SessionManager]]
+
+                session:_bind_chat_buffer_events()
+
+                local current_winid = vim.api.nvim_get_current_win()
+                vim.api.nvim_exec_autocmds("BufWinEnter", {
+                    buffer = test_bufnr,
+                    modeline = false,
+                })
+
+                assert.spy(on_buf_win_enter_spy).was.called(1)
+                assert.equal(current_winid, on_buf_win_enter_spy.calls[1][2])
+            end
+        )
+    end)
+
+    describe("hidden tool-call updates", function()
+        --- @type TestStub
+        local get_instance_stub
+        --- @type agentic.SessionManager|nil
+        local session
+        --- @type agentic.UserConfig.Folding|nil
+        local original_folding
+        --- @type agentic.UserConfig.AutoScroll|nil
+        local original_auto_scroll
+
+        before_each(function()
+            local AgentInstance = require("agentic.acp.agent_instance")
+
+            original_folding = Config.folding
+            original_auto_scroll = Config.auto_scroll
+            Config.auto_scroll = { threshold = 0 }
+            Config.folding = {
+                tool_calls = {
+                    enabled = true,
+                    min_lines = 3,
+                    kinds = {
+                        fetch = {
+                            enabled = true,
+                            min_lines = 3,
+                        },
+                    },
+                },
+            }
+
+            get_instance_stub = spy.stub(AgentInstance, "get_instance")
+            get_instance_stub:returns({
+                provider_config = { name = "Benchmark" },
+            })
+
+            session = SessionManager:new(vim.api.nvim_get_current_tabpage())
+        end)
+
+        after_each(function()
+            Config.folding = original_folding
+            Config.auto_scroll = original_auto_scroll
+
+            if session then
+                pcall(function()
+                    session:destroy()
+                end)
+                session = nil
+            end
+
+            get_instance_stub:revert()
+        end)
+
+        it("folds hidden updates after reopening the widget", function()
+            assert.is_not_nil(session)
+
+            session.widget:show({ focus_prompt = false })
+            session.message_writer:write_tool_call_block({
+                tool_call_id = "hidden-grow",
+                kind = "fetch",
+                argument = "url",
+                status = "completed",
+                body = { "line 1" },
+            })
+
+            assert.is_nil(
+                session.chat_folds:get_fold_state_for_tool_call(
+                    session.widget.win_nrs.chat,
+                    "hidden-grow"
+                )
+            )
+
+            session.widget:hide()
+            session.message_writer:update_tool_call_block({
+                tool_call_id = "hidden-grow",
+                status = "completed",
+                body = { "line 2", "line 3", "line 4" },
+            })
+
+            assert.equal(1, session.chat_folds:get_pending_count())
+
+            session.widget:show({ focus_prompt = false })
+
+            assert.is_true(
+                session.chat_folds:get_fold_state_for_tool_call(
+                    session.widget.win_nrs.chat,
+                    "hidden-grow"
+                )
+            )
+            assert.equal(0, session.chat_folds:get_pending_count())
+        end)
+
+        it(
+            "preserves existing closed folds after reopening the widget",
+            function()
+                assert.is_not_nil(session)
+
+                session.widget:show({ focus_prompt = false })
+                session.message_writer:write_tool_call_block({
+                    tool_call_id = "keep-closed",
+                    kind = "fetch",
+                    argument = "url",
+                    status = "completed",
+                    body = { "line 1", "line 2", "line 3" },
+                })
+
+                assert.is_true(
+                    session.chat_folds:get_fold_state_for_tool_call(
+                        session.widget.win_nrs.chat,
+                        "keep-closed"
+                    )
+                )
+
+                session.widget:hide()
+                session.widget:show({ focus_prompt = false })
+
+                assert.is_true(
+                    session.chat_folds:get_fold_state_for_tool_call(
+                        session.widget.win_nrs.chat,
+                        "keep-closed"
+                    )
+                )
+            end
+        )
+    end)
+
+    describe("_cancel_session", function()
+        --- @type TestStub
+        local slash_commands_stub
+        --- @type integer
+        local chat_bufnr
+        --- @type integer
+        local input_bufnr
+
+        before_each(function()
+            local SlashCommands = require("agentic.acp.slash_commands")
+
+            chat_bufnr = vim.api.nvim_create_buf(false, true)
+            input_bufnr = vim.api.nvim_create_buf(false, true)
+            slash_commands_stub = spy.stub(SlashCommands, "setCommands")
+        end)
+
+        after_each(function()
+            slash_commands_stub:revert()
+
+            if chat_bufnr and vim.api.nvim_buf_is_valid(chat_bufnr) then
+                vim.api.nvim_buf_delete(chat_bufnr, { force = true })
+            end
+
+            if input_bufnr and vim.api.nvim_buf_is_valid(input_bufnr) then
+                vim.api.nvim_buf_delete(input_bufnr, { force = true })
+            end
+        end)
+
+        it("resets chat fold state along with the session UI", function()
+            local ChatFolds = require("agentic.ui.chat_folds")
+
+            local chat_folds = ChatFolds:new(chat_bufnr)
+            chat_folds._tool_call_folds["tool-reset-1"] = {
+                tool_call_id = "tool-reset-1",
+                extmark_id = 1,
+                kind = "fetch",
+                status = "completed",
+                policy = { enabled = true, min_lines = 3 },
+                should_render_fold = true,
+                default_closed = true,
+                last_known_fold_state = true,
+            }
+            chat_folds._pending_tool_call_ids["tool-reset-1"] = true
+            chat_folds._reopen_restore_tool_call_ids["tool-reset-1"] = true
+            chat_folds._captured_window_states = {
+                [101] = { ["tool-reset-1"] = true },
+            }
+
+            local session = {
+                session_id = "session-1",
+                agent = { cancel_session = spy.new(function() end) },
+                widget = {
+                    clear = spy.new(function() end),
+                    buf_nrs = { input = input_bufnr },
+                },
+                todo_list = { clear = spy.new(function() end) },
+                file_list = { clear = spy.new(function() end) },
+                code_selection = { clear = spy.new(function() end) },
+                diagnostics_list = { clear = spy.new(function() end) },
+                config_options = { clear = spy.new(function() end) },
+                chat_folds = chat_folds,
+                permission_manager = { clear = spy.new(function() end) },
+                status_animation = { stop = spy.new(function() end) },
+                chat_history = { messages = { "old" } },
+                history_to_send = { "old" },
+                message_writer = {
+                    reset_sender_tracking = spy.new(function() end),
+                },
+                _cancel_session = SessionManager._cancel_session,
+            } --[[@as agentic.SessionManager]]
+
+            session:_cancel_session()
+
+            assert.same({}, chat_folds._tool_call_folds)
+            assert.same({}, chat_folds._pending_tool_call_ids)
+            assert.same({}, chat_folds._reopen_restore_tool_call_ids)
+            assert.is_nil(chat_folds._captured_window_states)
+        end)
+    end)
+    describe("FileChangedShell autocommand", function()
+        local original_fcs_choice
+
+        before_each(function()
+            original_fcs_choice = vim.v.fcs_choice
+            require("agentic").setup({})
+        end)
+
+        after_each(function()
+            vim.v.fcs_choice = original_fcs_choice
         end)
 
         it("sets fcs_choice to reload when FileChangedShell fires", function()
-            child.v.fcs_choice = ""
-            child.api.nvim_exec_autocmds("FileChangedShell", {
+            vim.v.fcs_choice = ""
+            vim.api.nvim_exec_autocmds("FileChangedShell", {
                 group = "AgenticCleanup",
                 pattern = "*",
             })
 
-            assert.equal("reload", child.v.fcs_choice)
+            assert.equal("reload", vim.v.fcs_choice)
         end)
     end)
 
@@ -256,7 +515,6 @@ describe("agentic.SessionManager", function()
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
-            local Config = require("agentic.config")
 
             notify_stub = spy.stub(Logger, "notify")
             schedule_queue = {}
@@ -349,7 +607,6 @@ describe("agentic.SessionManager", function()
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
-            local Config = require("agentic.config")
 
             notify_stub = spy.stub(Logger, "notify")
             schedule_queue = {}
@@ -454,7 +711,6 @@ describe("agentic.SessionManager", function()
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
-            local Config = require("agentic.config")
 
             notify_stub = spy.stub(Logger, "notify")
             schedule_stub = spy.stub(vim, "schedule")
@@ -542,7 +798,6 @@ describe("agentic.SessionManager", function()
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
-            local Config = require("agentic.config")
 
             notify_stub = spy.stub(Logger, "notify")
             schedule_queue = {}
