@@ -25,11 +25,11 @@
   precedence in `ChatFolds`
 - [ ] 2.4 GREEN: Resolve the effective `enabled` and `min_lines` policy
   from `Config.folding.tool_calls` inside `ChatFolds`
-- [ ] 2.5 RED: Add tests that a user-opened or user-closed fold keeps
-  that state when the same tool call receives later updates in the same
-  visible window
-- [ ] 2.6 GREEN: Refresh fold ranges for visible chat windows without
-  overriding the current window's fold state
+- [ ] 2.5 RED: Add tests that custom fold text is resolved from
+  buffer-local fold metadata without relying on module-level runtime
+  state
+- [ ] 2.6 GREEN: Store fold text metadata per chat buffer and resolve
+  `response hidden (N lines)` from that buffer-local state
 - [ ] 2.7 GREEN: Apply custom chat-window fold text for tool response
   folds: `response hidden (N lines)`
 - [ ] 2.8 GREEN: Keep fold metadata and any pending-fold queue inside

@@ -8,8 +8,9 @@ the tool header and status remain visible.
 
 #### Scenario: Create a fold for a new tool call response
 
-- **WHEN** a tool call block with response body lines is written to the
-  chat buffer
+- **WHEN** a tool call reaches `completed`
+- **AND** its final rendered response body lines are written to the chat
+  buffer
 - **AND** tool call folding is enabled
 - **THEN** the response body lines are placed inside a native Neovim
   fold
@@ -17,27 +18,12 @@ the tool header and status remain visible.
 - **AND** the folded body uses the custom fold text
   `response hidden (N lines)`
 
-#### Scenario: Tool call update expands the fold range
-
-- **WHEN** an existing tool call block receives an update with more
-  response body lines
-- **AND** that block already has a tool response fold
-- **THEN** the fold range expands to cover the new body lines
-
 #### Scenario: In-progress tool call stays open while streaming
 
 - **WHEN** an in-progress tool call response grows beyond the configured
   folding threshold
 - **THEN** the system does not auto-fold it yet
 - **AND** the response remains open while output is still streaming
-
-#### Scenario: Manual fold toggle survives later updates
-
-- **WHEN** a user manually opens or closes a tool response fold in the
-  current chat window
-- **AND** the same tool call later receives an update
-- **THEN** the fold range is refreshed as needed
-- **AND** the current window keeps the user's open or closed state
 
 ### Requirement: Tool call fold defaults SHALL be configurable
 
