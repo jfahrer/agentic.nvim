@@ -418,11 +418,6 @@ local ConfigDefault = {
         },
     },
 
-    --- Show diff preview for edit tool calls in the buffer
-    --- @class agentic.UserConfig.DiffPreview
-    --- @field enabled boolean
-    --- @field layout "inline" | "split"
-    --- @field center_on_navigate_hunks boolean
     diff_preview = {
         enabled = true,
         layout = "split",

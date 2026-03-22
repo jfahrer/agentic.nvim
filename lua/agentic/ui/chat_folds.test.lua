@@ -210,35 +210,40 @@ describe("agentic.ui.ChatFolds", function()
         assert.is_nil(chat_folds:_get_fold_state(winid, disabled_body_line))
     end)
 
-    it("waits for completion and leaves failed tool calls open but foldable", function()
-        writer:write_tool_call_block(
-            make_block("execute-pending", "execute", "in_progress", 5)
-        )
-        writer:write_tool_call_block(
-            make_block("execute-failed", "execute", "in_progress", 5)
-        )
+    it(
+        "waits for completion and leaves failed tool calls open but foldable",
+        function()
+            writer:write_tool_call_block(
+                make_block("execute-pending", "execute", "in_progress", 5)
+            )
+            writer:write_tool_call_block(
+                make_block("execute-failed", "execute", "in_progress", 5)
+            )
 
-        local pending_body_line = get_body_info("execute-pending")
-        local failed_body_line = get_body_info("execute-failed")
+            local pending_body_line = get_body_info("execute-pending")
+            local failed_body_line = get_body_info("execute-failed")
 
-        assert.is_nil(chat_folds:_get_fold_state(winid, pending_body_line))
-        assert.is_nil(chat_folds:_get_fold_state(winid, failed_body_line))
+            assert.is_nil(chat_folds:_get_fold_state(winid, pending_body_line))
+            assert.is_nil(chat_folds:_get_fold_state(winid, failed_body_line))
 
-        writer:update_tool_call_block({
-            tool_call_id = "execute-pending",
-            status = "completed",
-        })
-        writer:update_tool_call_block({
-            tool_call_id = "execute-failed",
-            status = "failed",
-        })
+            writer:update_tool_call_block({
+                tool_call_id = "execute-pending",
+                status = "completed",
+            })
+            writer:update_tool_call_block({
+                tool_call_id = "execute-failed",
+                status = "failed",
+            })
 
-        pending_body_line = get_body_info("execute-pending")
-        local failed_updated_body_line = get_body_info("execute-failed")
+            pending_body_line = get_body_info("execute-pending")
+            local failed_updated_body_line = get_body_info("execute-failed")
 
-        assert.is_true(chat_folds:_get_fold_state(winid, pending_body_line))
-        assert.is_false(chat_folds:_get_fold_state(winid, failed_updated_body_line))
-    end)
+            assert.is_true(chat_folds:_get_fold_state(winid, pending_body_line))
+            assert.is_false(
+                chat_folds:_get_fold_state(winid, failed_updated_body_line)
+            )
+        end
+    )
 
     it("keeps user-opened and user-closed folds on later updates", function()
         writer:write_tool_call_block(

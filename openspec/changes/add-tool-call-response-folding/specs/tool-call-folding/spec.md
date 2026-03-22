@@ -106,7 +106,11 @@ effective `min_lines` threshold.
 #### Scenario: Failed tool call stays open by default
 
 - **WHEN** a tool call reaches `failed`
-- **THEN** the system does not auto-fold it by default
+- **AND** its rendered response body line count is greater than or equal
+  to the effective `min_lines` threshold
+- **THEN** the tool response fold is created in the open state by default
+- **AND** the user can manually close or reopen that fold with normal
+  Neovim fold commands
 
 ### Requirement: Tool call folding SHALL respect restored folds and backfill missing ones
 
