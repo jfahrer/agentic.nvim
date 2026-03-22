@@ -291,6 +291,63 @@ describe("agentic.ui.chat_folds", function()
                 )
             end
         )
+
+        it(
+            "keeps the tool header visible for initially completed blocks in a populated transcript",
+            function()
+                set_execute_threshold(3)
+
+                writer:write_message({
+                    sessionUpdate = "agent_message_chunk",
+                    content = {
+                        type = "text",
+                        text = "The user wants me to execute foo.rb again.",
+                    },
+                })
+
+                writer:write_tool_call_block({
+                    tool_call_id = "tool-live-prefilled-completed",
+                    kind = "execute",
+                    status = "completed",
+                    argument = "foo.rb",
+                    body = make_lines(12, "done"),
+                })
+
+                local folds = ChatFolds:new(bufnr, writer)
+
+                assert.is_true(
+                    folds:sync_tool_call("tool-live-prefilled-completed")
+                )
+
+                local metadata =
+                    vim.b[bufnr].agentic_chat_folds.by_tool_call_id["tool-live-prefilled-completed"]
+                assert.is_not_nil(metadata)
+                if metadata == nil then
+                    return
+                end
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+                local header_line = nil
+                for i, line in ipairs(lines) do
+                    if line == " execute(foo.rb) " then
+                        header_line = i
+                        break
+                    end
+                end
+
+                assert.is_not_nil(header_line)
+                if header_line == nil then
+                    return
+                end
+
+                assert.equal(header_line + 1, metadata.fold_start)
+                assert.equal(-1, vim.fn.foldclosed(header_line))
+                assert.equal(
+                    metadata.fold_start,
+                    vim.fn.foldclosed(metadata.fold_start)
+                )
+            end
+        )
     end)
 
     describe("debug logging", function()

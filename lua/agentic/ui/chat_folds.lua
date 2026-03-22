@@ -35,7 +35,15 @@ local ChatFolds = {}
 ChatFolds.__index = ChatFolds
 
 local FOLDTEXT_EXPR = "v:lua.require'agentic.ui.chat_folds'.foldtext()"
-local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+
+--- @param tracker agentic.ui.MessageWriter.ToolCallBlock
+--- @return string header
+local function build_tool_call_header(tracker)
+    local kind = tracker.kind or "other"
+    local argument = tracker.argument or ""
+    argument = argument:gsub("\n", "\\n")
+    return string.format(" %s(%s) ", kind, argument)
+end
 
 --- @param reason string
 --- @param tool_call_id string
@@ -189,18 +197,8 @@ function ChatFolds:_resolve_body_rows(tool_call_id)
         return nil, nil, tracker
     end
 
-    local pos = vim.api.nvim_buf_get_extmark_by_id(
-        self.bufnr,
-        NS_TOOL_BLOCKS,
-        tracker.extmark_id,
-        { details = true }
-    )
-    if
-        pos == nil
-        or pos[1] == nil
-        or pos[3] == nil
-        or pos[3].end_row == nil
-    then
+    local rows = self.writer:get_tool_call_rows(tool_call_id)
+    if rows == nil then
         log_row_resolution_failure(
             "tool call extmark could not be resolved",
             tool_call_id
@@ -208,13 +206,20 @@ function ChatFolds:_resolve_body_rows(tool_call_id)
         return nil, nil, tracker
     end
 
-    local rows = {
-        start_row = pos[1],
-        end_row = pos[3].end_row,
-        tracker = tracker,
-    }
+    local expected_header = build_tool_call_header(tracker)
+    local first_row_text = vim.api.nvim_buf_get_lines(
+        self.bufnr,
+        rows.start_row,
+        rows.start_row + 1,
+        false
+    )[1]
 
-    local body_start = rows.start_row + 1
+    local body_start_offset = 1
+    if first_row_text == expected_header then
+        body_start_offset = 2
+    end
+
+    local body_start = rows.start_row + body_start_offset
     local body_end = rows.end_row
 
     if body_end < body_start then

@@ -1,5 +1,6 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local ChatFolds = require("agentic.ui.chat_folds")
 local MessageWriter = require("agentic.ui.message_writer")
 
 describe("SessionRestore", function()
@@ -439,6 +440,85 @@ describe("SessionRestore", function()
                 )
 
                 write_tool_call_block_stub:revert()
+                vim.api.nvim_buf_delete(bufnr, { force = true })
+            end
+        )
+
+        it(
+            "keeps replayed tool call headers visible in populated transcripts",
+            function()
+                local bufnr = vim.api.nvim_create_buf(false, true)
+                local winid = vim.api.nvim_open_win(bufnr, true, {
+                    relative = "editor",
+                    width = 120,
+                    height = 40,
+                    row = 0,
+                    col = 0,
+                })
+                local writer = MessageWriter:new(bufnr)
+                local folds = ChatFolds:new(bufnr, writer)
+
+                --- @type agentic.ui.ChatHistory.Message[]
+                local messages = {
+                    {
+                        type = "agent",
+                        text = "The user wants me to execute foo.rb again.",
+                    },
+                    {
+                        type = "tool_call",
+                        tool_call_id = "tool-restore-header-visible",
+                        kind = "execute",
+                        status = "completed",
+                        argument = "foo.rb",
+                        body = (function()
+                            local lines = {}
+                            for i = 1, 12 do
+                                lines[i] = string.format("line %d", i)
+                            end
+                            return lines
+                        end)(),
+                    },
+                }
+
+                SessionRestore.replay_messages(
+                    writer,
+                    messages,
+                    function(tool_call)
+                        folds:sync_tool_call(tool_call.tool_call_id)
+                    end
+                )
+
+                local metadata =
+                    vim.b[bufnr].agentic_chat_folds.by_tool_call_id["tool-restore-header-visible"]
+                assert.is_not_nil(metadata)
+                if metadata == nil then
+                    return
+                end
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+                local header_line = nil
+                for i, line in ipairs(lines) do
+                    if line == " execute(foo.rb) " then
+                        header_line = i
+                        break
+                    end
+                end
+
+                assert.is_not_nil(header_line)
+                if header_line == nil then
+                    return
+                end
+
+                assert.equal(header_line + 1, metadata.fold_start)
+                assert.equal(-1, vim.fn.foldclosed(header_line))
+                assert.equal(
+                    metadata.fold_start,
+                    vim.api.nvim_win_call(winid, function()
+                        return vim.fn.foldclosed(metadata.fold_start)
+                    end)
+                )
+
+                vim.api.nvim_win_close(winid, true)
                 vim.api.nvim_buf_delete(bufnr, { force = true })
             end
         )
