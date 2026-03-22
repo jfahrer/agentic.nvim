@@ -13,6 +13,7 @@ local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
 --- @field kind agentic.acp.ToolKind
 --- @field status agentic.acp.ToolCallStatus
 --- @field policy agentic.ui.ChatFolds.Policy
+--- @field should_render_fold? boolean
 --- @field default_closed? boolean
 --- @field last_known_fold_state? boolean
 
@@ -332,26 +333,34 @@ end
 
 --- @param tool_call_fold agentic.ui.ChatFolds.ToolCallFold
 function ChatFolds:_decide_default_state(tool_call_fold)
+    local _, _, body_line_count =
+        self:_resolve_body_range(tool_call_fold.extmark_id)
+    local meets_threshold = body_line_count ~= nil
+        and body_line_count > 0
+        and tool_call_fold.policy.enabled
+        and body_line_count >= tool_call_fold.policy.min_lines
+
+    tool_call_fold.should_render_fold = false
+
     if tool_call_fold.status == "failed" then
+        tool_call_fold.should_render_fold = meets_threshold
         tool_call_fold.default_closed = false
         return
     end
 
     if tool_call_fold.status ~= "completed" then
+        tool_call_fold.default_closed = nil
         return
     end
+
+    tool_call_fold.should_render_fold = meets_threshold
 
     if tool_call_fold.last_known_fold_state ~= nil then
         tool_call_fold.default_closed = tool_call_fold.last_known_fold_state
         return
     end
 
-    local _, _, body_line_count =
-        self:_resolve_body_range(tool_call_fold.extmark_id)
-    tool_call_fold.default_closed = body_line_count ~= nil
-        and body_line_count > 0
-        and tool_call_fold.policy.enabled
-        and body_line_count >= tool_call_fold.policy.min_lines
+    tool_call_fold.default_closed = meets_threshold
 end
 
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
@@ -359,21 +368,19 @@ function ChatFolds:sync_tool_call(tracker)
     local tool_call_fold = self:_ensure_tool_call_fold(tracker)
     self:_decide_default_state(tool_call_fold)
 
-    if tool_call_fold.default_closed ~= true then
+    if tool_call_fold.should_render_fold ~= true then
         self._pending_tool_call_ids[tracker.tool_call_id] = nil
+        self._reopen_restore_tool_call_ids[tracker.tool_call_id] = nil
         return
     end
 
     local winids = self:_get_visible_windows()
     if #winids == 0 then
-        if tool_call_fold.default_closed == true then
-            self._pending_tool_call_ids[tracker.tool_call_id] = true
-            self._reopen_restore_tool_call_ids[tracker.tool_call_id] = nil
-        elseif tool_call_fold.last_known_fold_state == false then
+        if tool_call_fold.last_known_fold_state ~= nil then
             self._pending_tool_call_ids[tracker.tool_call_id] = nil
             self._reopen_restore_tool_call_ids[tracker.tool_call_id] = true
         else
-            self._pending_tool_call_ids[tracker.tool_call_id] = nil
+            self._pending_tool_call_ids[tracker.tool_call_id] = true
             self._reopen_restore_tool_call_ids[tracker.tool_call_id] = nil
         end
         return
@@ -392,7 +399,7 @@ end
 function ChatFolds:sync_pending(winid)
     for tool_call_id, _ in pairs(self._pending_tool_call_ids) do
         local tool_call_fold = self._tool_call_folds[tool_call_id]
-        if tool_call_fold and tool_call_fold.default_closed then
+        if tool_call_fold and tool_call_fold.should_render_fold then
             self:_sync_fold_to_window(winid, tool_call_fold)
         end
         self._pending_tool_call_ids[tool_call_id] = nil
