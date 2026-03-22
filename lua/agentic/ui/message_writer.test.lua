@@ -489,5 +489,32 @@ describe("agentic.ui.MessageWriter", function()
                 "after three",
             }, rows.tracker.body)
         end)
+
+        it("replaces updates from the original header line", function()
+            writer:write_tool_call_block(
+                make_tool_call_block("rows-header-update", "pending", {
+                    "before",
+                })
+            )
+
+            writer:update_tool_call_block({
+                tool_call_id = "rows-header-update",
+                status = "completed",
+                body = {
+                    "after one",
+                    "after two",
+                },
+            })
+
+            assert.same({
+                " execute(ls) ",
+                "before",
+                "",
+                "---",
+                "",
+                "after one",
+                "after two",
+            }, vim.api.nvim_buf_get_lines(bufnr, 0, 7, false))
+        end)
     end)
 end)

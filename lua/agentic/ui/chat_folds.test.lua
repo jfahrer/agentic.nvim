@@ -250,31 +250,47 @@ describe("agentic.ui.chat_folds", function()
             end
         )
 
-        it("keeps failed tool calls open", function()
-            set_execute_threshold(3)
+        it(
+            "keeps failed tool calls open by default but lets users close them",
+            function()
+                set_execute_threshold(3)
 
-            writer:write_tool_call_block(
-                make_execute_block(
-                    "tool-live-failed",
-                    "in_progress",
-                    make_lines(2)
+                writer:write_tool_call_block(
+                    make_execute_block(
+                        "tool-live-failed",
+                        "in_progress",
+                        make_lines(2)
+                    )
                 )
-            )
 
-            local folds = ChatFolds:new(bufnr, writer)
+                local folds = ChatFolds:new(bufnr, writer)
 
-            writer:update_tool_call_block({
-                tool_call_id = "tool-live-failed",
-                status = "failed",
-                body = make_lines(3, "failed"),
-            })
+                writer:update_tool_call_block({
+                    tool_call_id = "tool-live-failed",
+                    status = "failed",
+                    body = make_lines(3, "failed"),
+                })
 
-            assert.is_false(folds:sync_tool_call("tool-live-failed"))
-            assert.is_nil(
-                vim.b[bufnr].agentic_chat_folds.by_tool_call_id["tool-live-failed"]
-            )
-            assert.equal(-1, vim.fn.foldclosed(2))
-        end)
+                assert.is_true(folds:sync_tool_call("tool-live-failed"))
+
+                local metadata =
+                    vim.b[bufnr].agentic_chat_folds.by_tool_call_id["tool-live-failed"]
+                assert.is_not_nil(metadata)
+                if metadata == nil then
+                    return
+                end
+
+                assert.equal(-1, vim.fn.foldclosed(metadata.fold_start))
+
+                vim.api.nvim_win_set_cursor(winid, { metadata.fold_start, 0 })
+                vim.cmd("silent keepjumps normal! zc")
+
+                assert.equal(
+                    metadata.fold_start,
+                    vim.fn.foldclosed(metadata.fold_start)
+                )
+            end
+        )
     end)
 
     describe("debug logging", function()
@@ -418,7 +434,7 @@ describe("agentic.ui.chat_folds", function()
         end)
 
         it(
-            "does not backfill a hidden pending fold after the tool call fails",
+            "backfills failed hidden tool calls as open folds on reopen",
             function()
                 Config.folding = {
                     tool_calls = {
@@ -462,8 +478,8 @@ describe("agentic.ui.chat_folds", function()
                 })
 
                 assert.is_false(folds:sync_tool_call("tool-hidden-failed"))
-                assert.is_nil(
-                    folds._pending_tool_call_ids["tool-hidden-failed"]
+                assert.is_true(
+                    folds._pending_tool_call_ids["tool-hidden-failed"] == true
                 )
 
                 winid = vim.api.nvim_open_win(bufnr, true, {
@@ -476,8 +492,24 @@ describe("agentic.ui.chat_folds", function()
 
                 folds:backfill_pending_for_current_window()
 
-                assert.is_nil(get_fold_metadata("tool-hidden-failed"))
-                assert.equal(-1, vim.fn.foldclosed(2))
+                local metadata = get_fold_metadata("tool-hidden-failed")
+                assert.is_not_nil(metadata)
+                if metadata == nil then
+                    return
+                end
+
+                assert.is_nil(
+                    folds._pending_tool_call_ids["tool-hidden-failed"]
+                )
+                assert.equal(-1, vim.fn.foldclosed(metadata.fold_start))
+
+                vim.api.nvim_win_set_cursor(winid, { metadata.fold_start, 0 })
+                vim.cmd("silent keepjumps normal! zc")
+
+                assert.equal(
+                    metadata.fold_start,
+                    vim.fn.foldclosed(metadata.fold_start)
+                )
             end
         )
 

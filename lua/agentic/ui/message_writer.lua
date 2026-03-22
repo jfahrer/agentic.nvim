@@ -333,6 +333,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     end
 
     local start_row = pos[1]
+    local content_start_row = math.max(start_row - 1, 0)
     local details = pos[3]
     local old_end_row = details and details.end_row
 
@@ -360,19 +361,19 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             local header = self:_build_header_line(tracker)
             vim.api.nvim_buf_set_lines(
                 bufnr,
-                start_row,
-                start_row + 1,
+                content_start_row,
+                content_start_row + 1,
                 false,
                 { header }
             )
 
             self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
             tracker.decoration_extmark_ids =
-                self:_render_decorations(start_row, old_end_row)
+                self:_render_decorations(content_start_row, old_end_row)
 
-            self:_clear_status_namespace(start_row, old_end_row)
+            self:_clear_status_namespace(content_start_row, old_end_row)
             self:_apply_status_highlights_if_present(
-                start_row,
+                content_start_row,
                 old_end_row,
                 tracker.status
             )
@@ -381,13 +382,13 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         end
 
         self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
-        self:_clear_status_namespace(start_row, old_end_row)
+        self:_clear_status_namespace(content_start_row, old_end_row)
 
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
         vim.api.nvim_buf_set_lines(
             bufnr,
-            start_row,
+            content_start_row,
             old_end_row + 1,
             false,
             new_lines
@@ -407,7 +408,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             if vim.api.nvim_buf_is_valid(bufnr) then
                 self:_apply_block_highlights(
                     bufnr,
-                    start_row,
+                    content_start_row,
                     new_end_row,
                     tracker.kind,
                     highlight_ranges
@@ -422,10 +423,10 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         })
 
         tracker.decoration_extmark_ids =
-            self:_render_decorations(start_row, new_end_row)
+            self:_render_decorations(content_start_row, new_end_row)
 
         self:_apply_status_highlights_if_present(
-            start_row,
+            content_start_row,
             new_end_row,
             tracker.status
         )

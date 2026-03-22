@@ -412,6 +412,26 @@ function ChatFolds:_create_manual_fold(fold_start, fold_end)
     end
 end
 
+--- @param fold_start integer
+function ChatFolds:_open_fold(fold_start)
+    local wins = vim.fn.win_findbuf(self.bufnr)
+
+    for _, winid in ipairs(wins) do
+        if vim.api.nvim_win_is_valid(winid) then
+            vim.api.nvim_win_call(winid, function()
+                local view = vim.fn.winsaveview()
+
+                vim.api.nvim_win_set_cursor(winid, { fold_start, 0 })
+                pcall(function()
+                    vim.cmd("silent keepjumps normal! zo")
+                end)
+
+                vim.fn.winrestview(view)
+            end)
+        end
+    end
+end
+
 --- @param tool_call_id string
 --- @return boolean created
 function ChatFolds:create_fold(tool_call_id)
@@ -471,6 +491,27 @@ function ChatFolds:sync_tool_call(tool_call_id)
 
     local body_line_count = fold_end - fold_start + 1
     local decision = self:_get_tool_call_decision(tracker, body_line_count)
+    local can_create_fold = decision.enabled
+        and body_line_count >= decision.min_lines
+
+    if tracker.status == "failed" and can_create_fold then
+        if vim.fn.bufwinid(self.bufnr) == -1 then
+            self._pending_tool_call_ids[tool_call_id] = true
+            return false
+        end
+
+        self:_clear_pending_tool_call(tool_call_id)
+
+        local had_existing_fold =
+            self:_has_existing_fold_range(tool_call_id, fold_start, fold_end)
+        local created = self:create_fold(tool_call_id)
+
+        if created and not had_existing_fold then
+            self:_open_fold(fold_start)
+        end
+
+        return created
+    end
 
     if tracker.status ~= "completed" or not decision.should_close then
         self:_clear_pending_tool_call(tool_call_id)
