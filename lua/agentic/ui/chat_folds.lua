@@ -2,6 +2,7 @@ local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 
 local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+local FOLD_TEXT_PREFIXES_VAR = "_agentic_fold_text_prefixes"
 
 --- @class agentic.ui.ChatFolds.Policy
 --- @field enabled boolean
@@ -13,6 +14,7 @@ local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
 --- @field kind agentic.acp.ToolKind
 --- @field status agentic.acp.ToolCallStatus
 --- @field policy agentic.ui.ChatFolds.Policy
+--- @field fold_text_prefix string
 --- @field should_render_fold? boolean
 --- @field default_closed? boolean
 --- @field last_known_fold_state? boolean
@@ -25,6 +27,24 @@ local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
 --- @field _captured_window_states? table<integer, table<string, boolean|nil>>
 local ChatFolds = {}
 ChatFolds.__index = ChatFolds
+
+--- @param line_nr integer
+--- @return string line_key
+local function line_key(line_nr)
+    return tostring(line_nr)
+end
+
+--- @param bufnr integer
+--- @return table<string, string> fold_text_prefixes
+local function get_fold_text_prefixes(bufnr)
+    local fold_text_prefixes = vim.b[bufnr][FOLD_TEXT_PREFIXES_VAR]
+    if type(fold_text_prefixes) ~= "table" then
+        fold_text_prefixes = {}
+        vim.b[bufnr][FOLD_TEXT_PREFIXES_VAR] = fold_text_prefixes
+    end
+
+    return fold_text_prefixes
+end
 
 --- @param kind agentic.acp.ToolKind
 --- @return agentic.ui.ChatFolds.Policy policy
@@ -72,13 +92,17 @@ function ChatFolds:new(bufnr)
     }
 
     setmetatable(instance, self)
+    vim.b[bufnr][FOLD_TEXT_PREFIXES_VAR] = {}
     return instance
 end
 
 --- @return string fold_text
 function ChatFolds.foldtext()
+    local bufnr = vim.api.nvim_get_current_buf()
     local line_count = vim.v.foldend - vim.v.foldstart + 1
-    return string.format("response hidden (%d lines)", line_count)
+    local prefix = get_fold_text_prefixes(bufnr)[line_key(vim.v.foldstart)]
+        or ""
+    return string.format("%sresponse hidden (%d lines)", prefix, line_count)
 end
 
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
@@ -94,6 +118,7 @@ function ChatFolds:_ensure_tool_call_fold(tracker)
             kind = tracker.kind,
             status = tracker.status,
             policy = resolve_policy(tracker.kind),
+            fold_text_prefix = tracker.fold_text_prefix or "",
         }
 
         self._tool_call_folds[tracker.tool_call_id] = new_tool_call_fold
@@ -102,6 +127,7 @@ function ChatFolds:_ensure_tool_call_fold(tracker)
         tool_call_fold.extmark_id = tracker.extmark_id
         tool_call_fold.kind = tracker.kind
         tool_call_fold.status = tracker.status
+        tool_call_fold.fold_text_prefix = tracker.fold_text_prefix or ""
     end
 
     return tool_call_fold
@@ -215,6 +241,30 @@ function ChatFolds:_set_fold_state(winid, line_nr, is_closed)
     end)
 end
 
+--- @param line_nr integer
+--- @param prefix string
+function ChatFolds:_set_fold_text_prefix(line_nr, prefix)
+    local fold_text_prefixes = get_fold_text_prefixes(self.bufnr)
+    fold_text_prefixes[line_key(line_nr)] = prefix
+    vim.b[self.bufnr][FOLD_TEXT_PREFIXES_VAR] = fold_text_prefixes
+end
+
+--- @param line_nr integer
+function ChatFolds:_clear_fold_text_prefix(line_nr)
+    local fold_text_prefixes = get_fold_text_prefixes(self.bufnr)
+    fold_text_prefixes[line_key(line_nr)] = nil
+    vim.b[self.bufnr][FOLD_TEXT_PREFIXES_VAR] = fold_text_prefixes
+end
+
+--- @param tool_call_fold agentic.ui.ChatFolds.ToolCallFold
+function ChatFolds:_clear_tool_call_fold_text_prefix(tool_call_fold)
+    local body_start_row =
+        select(1, self:_resolve_body_range(tool_call_fold.extmark_id))
+    if body_start_row then
+        self:_clear_fold_text_prefix(body_start_row + 1)
+    end
+end
+
 function ChatFolds:remember_visible_window_states()
     for _, winid in ipairs(self:_get_visible_windows()) do
         self:_capture_window_fold_states(winid)
@@ -304,6 +354,7 @@ function ChatFolds:_sync_fold_to_window(winid, tool_call_fold)
 
     local start_line = body_start_row + 1
     local end_line = body_end_row + 1
+    self:_set_fold_text_prefix(start_line, tool_call_fold.fold_text_prefix)
     local should_close = self:_get_fold_state(winid, start_line)
     if should_close == nil then
         should_close =
@@ -369,6 +420,7 @@ function ChatFolds:sync_tool_call(tracker)
     self:_decide_default_state(tool_call_fold)
 
     if tool_call_fold.should_render_fold ~= true then
+        self:_clear_tool_call_fold_text_prefix(tool_call_fold)
         self._pending_tool_call_ids[tracker.tool_call_id] = nil
         self._reopen_restore_tool_call_ids[tracker.tool_call_id] = nil
         return
@@ -471,6 +523,7 @@ function ChatFolds:reset()
     self._pending_tool_call_ids = {}
     self._reopen_restore_tool_call_ids = {}
     self._captured_window_states = nil
+    vim.b[self.bufnr][FOLD_TEXT_PREFIXES_VAR] = {}
 end
 
 return ChatFolds

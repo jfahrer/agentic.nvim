@@ -19,8 +19,8 @@ to collapse while the tool name and status remain visible.
   `execute` responses sooner, while leaving `edit` responses open
 - Fold only completed tool calls whose rendered response body meets the
   effective line threshold; keep in-progress and failed tool calls open
-- Render folded tool responses with a compact custom fold header text:
-  `response hidden (N lines)`
+- Render folded tool responses with a compact custom fold header text
+  that preserves the block marker, such as `│ response hidden (N lines)`
 - Respect Neovim's built-in fold restoration when reopening an existing
   chat buffer, and backfill folds only for tool calls that became
   foldable while no chat window was visible by recording them as pending
