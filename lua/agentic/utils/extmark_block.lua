@@ -7,6 +7,7 @@ local GLYPHS = {
 
 --- @class agentic.utils.ExtmarkBlock
 local ExtmarkBlock = {}
+ExtmarkBlock.BODY_PREFIX = GLYPHS.VERTICAL .. " "
 
 --- @class agentic.utils.ExtmarkBlock.RenderBlockOpts
 --- @field header_line integer 0-indexed line number for header
@@ -40,7 +41,9 @@ function ExtmarkBlock.render_block(bufnr, ns_id, opts)
             table.insert(
                 decoration_ids,
                 vim.api.nvim_buf_set_extmark(bufnr, ns_id, line_num, 0, {
-                    virt_text = { { GLYPHS.VERTICAL .. " ", opts.hl_group } },
+                    virt_text = {
+                        { ExtmarkBlock.BODY_PREFIX, opts.hl_group },
+                    },
                     virt_text_pos = "inline",
                     hl_mode = "combine",
                 })

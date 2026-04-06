@@ -34,6 +34,7 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field file_path? string
 --- @field extmark_id? integer Range extmark spanning the block
 --- @field decoration_extmark_ids? integer[] IDs of decoration extmarks from ExtmarkBlock
+--- @field fold_text_prefix? string
 --- @field status? agentic.acp.ToolCallStatus
 --- @field body? string[]
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
@@ -407,6 +408,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
     self:_clear_thinking_state()
     self:_auto_scroll(self.bufnr)
     self:_maybe_write_sender_header("tool_call")
+    tool_call_block.fold_text_prefix = ExtmarkBlock.BODY_PREFIX
 
     self:_with_modifiable_and_notify_change(function(bufnr)
         local kind = tool_call_block.kind
@@ -471,6 +473,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     -- Some ACP providers don't send the diff on the first tool_call
     local already_has_diff = tracker.diff ~= nil
     local previous_body = tracker.body
+    tracker.fold_text_prefix = tracker.fold_text_prefix
+        or ExtmarkBlock.BODY_PREFIX
 
     tracker = vim.tbl_deep_extend("force", tracker, tool_call_block)
 
@@ -947,7 +951,9 @@ function MessageWriter:replay_history_messages(messages)
                 self:_set_thinking_extmark(start_line, end_line)
             end
         elseif msg.type == "tool_call" then
-            self:write_tool_call_block(msg)
+            self:write_tool_call_block(
+                msg --[[@as agentic.ui.MessageWriter.ToolCallBlock]]
+            )
         end
     end
 

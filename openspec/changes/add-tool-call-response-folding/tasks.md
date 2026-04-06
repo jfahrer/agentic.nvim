@@ -31,7 +31,8 @@
 - [x] 2.6 GREEN: Refresh fold ranges for visible chat windows without
   overriding the current window's fold state
 - [x] 2.7 GREEN: Apply custom chat-window fold text for tool response
-  folds: `response hidden (N lines)`
+  folds, preserving the block marker in the fold text, for example
+  `│ response hidden (N lines)`
 - [x] 2.8 GREEN: Keep fold metadata and any pending-fold queue inside
   `ChatFolds` so hot-path updates avoid rescanning full chat history
 

@@ -14,8 +14,8 @@ the tool header and status remain visible.
 - **THEN** the response body lines are placed inside a native Neovim
   fold
 - **AND** the tool header line remains visible outside the fold
-- **AND** the folded body uses the custom fold text
-  `response hidden (N lines)`
+- **AND** the folded body uses custom fold text that preserves the
+  block's body marker, such as `│ response hidden (N lines)`
 
 #### Scenario: Tool call update expands the fold range
 

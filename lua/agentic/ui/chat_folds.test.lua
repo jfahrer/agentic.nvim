@@ -3,6 +3,7 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local Config = require("agentic.config")
+local ExtmarkBlock = require("agentic.utils.extmark_block")
 
 describe("agentic.ui.ChatFolds", function()
     --- @type agentic.ui.ChatFolds
@@ -141,7 +142,7 @@ describe("agentic.ui.ChatFolds", function()
         end
     end)
 
-    it("creates a body-only fold with custom fold text", function()
+    it("creates a body-only fold with the marker in the fold text", function()
         writer:write_tool_call_block(
             make_block("fetch-1", "fetch", "completed", 3)
         )
@@ -152,7 +153,7 @@ describe("agentic.ui.ChatFolds", function()
         assert.equal(0, vim.fn.foldlevel(header_line))
         assert.equal(body_line, vim.fn.foldclosed(body_line))
         assert.equal(
-            "response hidden (3 lines)",
+            ExtmarkBlock.BODY_PREFIX .. "response hidden (3 lines)",
             vim.fn.foldtextresult(body_line)
         )
     end)

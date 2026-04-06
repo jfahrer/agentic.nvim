@@ -717,8 +717,9 @@ calls open.
 - `folding.tool_calls.kinds.<kind>.min_lines` - Per-tool line threshold override
 
 Supported normalized tool kinds include `fetch`, `execute`, `edit`, and `read`.
-Folded tool responses render with `response hidden (N lines)`, and you can use
-Neovim's normal fold commands like `zc` and `zo` inside the chat buffer.
+Folded tool responses preserve their block marker, rendering text like
+`│ response hidden (N lines)`, and you can use Neovim's normal fold commands
+like `zc` and `zo` inside the chat buffer.
 
 ### Slash Commands
 

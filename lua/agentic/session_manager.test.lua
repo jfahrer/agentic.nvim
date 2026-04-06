@@ -420,6 +420,7 @@ describe("agentic.SessionManager", function()
 
         it("resets chat fold state along with the session UI", function()
             local ChatFolds = require("agentic.ui.chat_folds")
+            local ExtmarkBlock = require("agentic.utils.extmark_block")
 
             local chat_folds = ChatFolds:new(chat_bufnr)
             chat_folds._tool_call_folds["tool-reset-1"] = {
@@ -428,6 +429,7 @@ describe("agentic.SessionManager", function()
                 kind = "fetch",
                 status = "completed",
                 policy = { enabled = true, min_lines = 3 },
+                fold_text_prefix = ExtmarkBlock.BODY_PREFIX,
                 should_render_fold = true,
                 default_closed = true,
                 last_known_fold_state = true,
@@ -436,6 +438,9 @@ describe("agentic.SessionManager", function()
             chat_folds._reopen_restore_tool_call_ids["tool-reset-1"] = true
             chat_folds._captured_window_states = {
                 [101] = { ["tool-reset-1"] = true },
+            }
+            vim.b[chat_bufnr]._agentic_fold_text_prefixes = {
+                ["3"] = ExtmarkBlock.BODY_PREFIX,
             }
 
             local session = {
@@ -467,6 +472,7 @@ describe("agentic.SessionManager", function()
             assert.same({}, chat_folds._pending_tool_call_ids)
             assert.same({}, chat_folds._reopen_restore_tool_call_ids)
             assert.is_nil(chat_folds._captured_window_states)
+            assert.same({}, vim.b[chat_bufnr]._agentic_fold_text_prefixes)
         end)
     end)
     describe("FileChangedShell autocommand", function()

@@ -56,12 +56,16 @@ This matches the request to fold the response content rather than hide
 the entire tool call card.
 
 To avoid Neovim's default fold text showing a noisy first output line,
-the chat window should use a custom fold text for tool-response folds:
+the chat window should use a custom fold text for tool-response folds
+that preserves the folded block's body marker:
 
-`response hidden (N lines)`
+`│ response hidden (N lines)`
 
 This keeps the fold text compact and generic because the actual tool
-header remains visible immediately above the folded body.
+header remains visible immediately above the folded body. The marker
+prefix should come from block metadata, not a hardcoded tool-call-only
+constant inside `ChatFolds`, so future foldable block families can reuse
+the same fold-text path with their own visual prefix.
 
 ### Namespace folding config by response family
 
@@ -113,9 +117,9 @@ edit previews by default.
 
 When the first `tool_call` arrives, `ChatFolds` stores the resolved
 family-level and per-kind policy needed to make the final folding
-decision later. The actual default open/closed state is decided only
-when the tool call reaches `completed`, using the final rendered body
-line count.
+decision later, along with the block-specific fold-text marker prefix.
+The actual default open/closed state is decided only when the tool call
+reaches `completed`, using the final rendered body line count.
 
 This avoids jarring mid-stream auto-folding while output is still being
 written.
