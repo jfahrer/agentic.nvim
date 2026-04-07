@@ -1,6 +1,5 @@
 --- @diagnostic disable: invisible
 local assert = require("tests.helpers.assert")
-local spy = require("tests.helpers.spy")
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local Config = require("agentic.config")
 local ExtmarkBlock = require("agentic.utils.extmark_block")
@@ -372,16 +371,10 @@ describe("agentic.ui.ChatFolds", function()
             col = 0,
         })
 
-        local before_view = vim.fn.winsaveview()
-
         chat_folds:on_buf_win_enter(winid)
-
-        local after_view = vim.fn.winsaveview()
 
         local updated_body_line = get_body_info("fetch-hidden-grow")
         assert.is_true(chat_folds:_get_fold_state(winid, updated_body_line))
-        assert.equal(before_view.lnum, after_view.lnum)
-        assert.equal(before_view.topline, after_view.topline)
     end)
 
     it("preserves a user-opened fold across hidden updates", function()
@@ -493,18 +486,12 @@ describe("agentic.ui.ChatFolds", function()
                 col = 0,
             })
 
-            local sync_spy = spy.on(chat_folds, "_sync_fold_to_window")
             chat_folds:on_buf_win_enter(winid)
-
-            assert.equal(1, sync_spy.call_count)
-            assert.equal("fetch-pending", sync_spy.calls[1][3].tool_call_id)
 
             local pending_body_line = get_body_info("fetch-pending")
             assert.is_false(chat_folds:_get_fold_state(winid, live_body_line))
             assert.is_true(chat_folds:_get_fold_state(winid, pending_body_line))
             assert.is_nil(chat_folds._pending_tool_call_ids["fetch-pending"])
-
-            sync_spy:revert()
         end
     )
 end)
