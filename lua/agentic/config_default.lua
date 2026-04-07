@@ -170,6 +170,11 @@
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
 
 --- Nested partial types for user config overrides
+--- @class (partial) agentic.PartialUserConfig.ToolCallFoldingKind: agentic.UserConfig.ToolCallFoldingKind
+--- @class (partial) agentic.PartialUserConfig.ToolCallFolding: agentic.UserConfig.ToolCallFolding
+--- @field kinds? table<string, agentic.PartialUserConfig.ToolCallFoldingKind|nil>
+--- @class (partial) agentic.PartialUserConfig.Folding: agentic.UserConfig.Folding
+--- @field tool_calls? agentic.PartialUserConfig.ToolCallFolding
 --- @class (partial) agentic.PartialUserConfig.Windows.Chat: agentic.UserConfig.Windows.Chat
 --- @class (partial) agentic.PartialUserConfig.Windows.Input: agentic.UserConfig.Windows.Input
 --- @class (partial) agentic.PartialUserConfig.Windows.Code: agentic.UserConfig.Windows.Code
@@ -212,9 +217,9 @@
 --- @field file_picker? agentic.PartialUserConfig.FilePicker
 --- @field image_paste? agentic.PartialUserConfig.ImagePaste
 --- @field auto_scroll? agentic.PartialUserConfig.AutoScroll
+--- @field folding? agentic.PartialUserConfig.Folding
 --- @field diff_preview? agentic.PartialUserConfig.DiffPreview
 --- @field settings? agentic.PartialUserConfig.Settings
-
 --- @class agentic.UserConfig
 --- @field debug boolean Enable printing debug messages which can be read via `:messages`
 --- @field provider agentic.UserConfig.ProviderName
@@ -230,6 +235,7 @@
 --- @field file_picker agentic.UserConfig.FilePicker
 --- @field image_paste agentic.UserConfig.ImagePaste
 --- @field auto_scroll agentic.UserConfig.AutoScroll
+--- @field folding agentic.UserConfig.Folding
 --- @field diff_preview agentic.UserConfig.DiffPreview
 --- @field hooks agentic.UserConfig.Hooks
 --- @field headers agentic.UserConfig.Headers
