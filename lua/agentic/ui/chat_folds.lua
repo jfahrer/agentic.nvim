@@ -448,6 +448,10 @@ function ChatFolds:on_buf_win_enter(winid)
         return
     end
 
+    if Config.folding.tool_calls.enabled == false then
+        return
+    end
+
     self:_configure_window(winid)
     self:sync_reopen_states(winid)
     self:sync_pending(winid)
