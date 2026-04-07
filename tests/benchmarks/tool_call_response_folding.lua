@@ -77,7 +77,7 @@ local function with_chat_context(fn)
     vim.bo[bufnr].filetype = "AgenticChat"
 
     local writer = MessageWriter:new(bufnr)
-    local folds = ChatFolds:new(bufnr)
+    local folds = ChatFolds:new(bufnr, tabpage)
     writer:set_chat_folds(folds)
     folds:on_buf_win_enter(winid)
 

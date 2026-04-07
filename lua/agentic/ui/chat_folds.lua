@@ -22,6 +22,7 @@ local FOLD_TEXT_PREFIXES_VAR = "_agentic_fold_text_prefixes"
 
 --- @class agentic.ui.ChatFolds
 --- @field bufnr integer
+--- @field tab_page_id integer
 --- @field _tool_call_folds table<string, agentic.ui.ChatFolds.ToolCallFold>
 --- @field _pending_tool_call_ids table<string, boolean>
 --- @field _reopen_restore_tool_call_ids table<string, boolean>
@@ -78,11 +79,13 @@ local function resolve_policy(kind)
 end
 
 --- @param bufnr integer
+--- @param tab_page_id integer
 --- @return agentic.ui.ChatFolds chat_folds
-function ChatFolds:new(bufnr)
+function ChatFolds:new(bufnr, tab_page_id)
     --- @type agentic.ui.ChatFolds
     local instance = {
         bufnr = bufnr,
+        tab_page_id = tab_page_id,
         _tool_call_folds = {},
         _pending_tool_call_ids = {},
         _reopen_restore_tool_call_ids = {},
@@ -164,8 +167,15 @@ end
 function ChatFolds:_get_visible_windows()
     local winids = {}
 
-    for _, winid in ipairs(vim.fn.win_findbuf(self.bufnr)) do
-        if vim.api.nvim_win_is_valid(winid) then
+    if not vim.api.nvim_tabpage_is_valid(self.tab_page_id) then
+        return winids
+    end
+
+    for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(self.tab_page_id)) do
+        if
+            vim.api.nvim_win_is_valid(winid)
+            and vim.api.nvim_win_get_buf(winid) == self.bufnr
+        then
             table.insert(winids, winid)
         end
     end
