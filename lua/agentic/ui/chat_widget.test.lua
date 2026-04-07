@@ -115,6 +115,24 @@ describe("agentic.ui.ChatWidget", function()
                 assert.is_true(before_hide_spy.call_count > 0)
             end)
 
+            it("hide() ignores re-entrant before-hide callbacks", function()
+                local before_hide_calls = 0
+
+                widget:set_on_before_hide(function()
+                    before_hide_calls = before_hide_calls + 1
+
+                    if before_hide_calls == 1 then
+                        widget:hide()
+                    end
+                end)
+                widget:show()
+
+                assert.has_no_errors(function()
+                    widget:hide()
+                end)
+                assert.equal(1, before_hide_calls)
+            end)
+
             it("show() is idempotent when called multiple times", function()
                 widget:show()
                 local first_chat_win = widget.win_nrs.chat
