@@ -153,13 +153,7 @@ function ChatFolds:_resolve_body_range(extmark_id)
         return nil, nil, nil
     end
 
-    local body_start_row = pos[1]
-    local start_line =
-        vim.api.nvim_buf_get_lines(self.bufnr, pos[1], pos[1] + 1, false)[1]
-
-    if start_line and start_line:match("^ .-%b() $") then
-        body_start_row = body_start_row + 1
-    end
+    local body_start_row = pos[1] + 1
 
     local body_end_row = end_row - 1
     local body_line_count = math.max(0, body_end_row - body_start_row + 1)
