@@ -51,13 +51,7 @@ end
 --- @return agentic.ui.ChatFolds.Policy policy
 local function resolve_policy(kind)
     --- @type agentic.UserConfig.ToolCallFolding
-    local tool_call_config = Config.folding and Config.folding.tool_calls
-        or {
-            enabled = true,
-            closed_by_default = true,
-            min_lines = 20,
-            kinds = {},
-        }
+    local tool_call_config = Config.folding.tool_calls
     local feature_enabled = tool_call_config.enabled ~= false
     --- @type agentic.UserConfig.ToolCallFoldingKind|nil
     local kind_config = tool_call_config.kinds[kind]
@@ -69,16 +63,17 @@ local function resolve_policy(kind)
     end
 
     --- @type integer
-    local min_lines = tool_call_config.min_lines or 20
+    local min_lines = tool_call_config.min_lines
     if kind_config and kind_config.min_lines ~= nil then
         min_lines = kind_config.min_lines
     end
+    --- @cast min_lines integer
 
     --- @type agentic.ui.ChatFolds.Policy
     local policy = {
         enabled = feature_enabled,
         closed_by_default = closed_by_default == true,
-        min_lines = min_lines or 20,
+        min_lines = min_lines,
     }
     return policy
 end
