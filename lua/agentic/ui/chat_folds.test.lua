@@ -5,6 +5,8 @@ local ACPPayloads = require("agentic.acp.acp_payloads")
 local Config = require("agentic.config")
 local ExtmarkBlock = require("agentic.utils.extmark_block")
 
+local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+
 describe("agentic.ui.ChatFolds", function()
     --- @type agentic.ui.ChatFolds
     local ChatFolds
@@ -58,16 +60,27 @@ describe("agentic.ui.ChatFolds", function()
     --- @return integer body_line_count
     local function get_body_info(tool_call_id)
         local state = chat_folds._tool_call_folds[tool_call_id]
+        local pos = vim.api.nvim_buf_get_extmark_by_id(
+            bufnr,
+            NS_TOOL_BLOCKS,
+            state.extmark_id,
+            { details = true }
+        )
         local body_start_row, _, body_line_count =
             chat_folds:_resolve_body_range(state.extmark_id)
 
+        assert.is_not_nil(pos)
+        assert.is_not_nil(pos[1])
         assert.is_not_nil(body_start_row)
         assert.is_not_nil(body_line_count)
 
+        local header_start_row = pos[1]
+
+        --- @cast header_start_row integer
         --- @cast body_start_row integer
         --- @cast body_line_count integer
 
-        return body_start_row + 1, body_start_row, body_line_count
+        return body_start_row + 1, header_start_row + 1, body_line_count
     end
 
     --- @param line integer
