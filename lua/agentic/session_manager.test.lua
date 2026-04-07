@@ -441,9 +441,6 @@ describe("agentic.SessionManager", function()
             }
             chat_folds._pending_tool_call_ids["tool-reset-1"] = true
             chat_folds._reopen_restore_tool_call_ids["tool-reset-1"] = true
-            chat_folds._captured_window_states = {
-                [101] = { ["tool-reset-1"] = true },
-            }
             vim.b[chat_bufnr]._agentic_fold_text_prefixes = {
                 ["3"] = ExtmarkBlock.BODY_PREFIX,
             }
@@ -476,7 +473,6 @@ describe("agentic.SessionManager", function()
             assert.same({}, chat_folds._tool_call_folds)
             assert.same({}, chat_folds._pending_tool_call_ids)
             assert.same({}, chat_folds._reopen_restore_tool_call_ids)
-            assert.is_nil(chat_folds._captured_window_states)
             assert.same({}, vim.b[chat_bufnr]._agentic_fold_text_prefixes)
         end)
     end)

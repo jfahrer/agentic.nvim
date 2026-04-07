@@ -25,7 +25,6 @@ local FOLD_TEXT_PREFIXES_VAR = "_agentic_fold_text_prefixes"
 --- @field _tool_call_folds table<string, agentic.ui.ChatFolds.ToolCallFold>
 --- @field _pending_tool_call_ids table<string, boolean>
 --- @field _reopen_restore_tool_call_ids table<string, boolean>
---- @field _captured_window_states? table<integer, table<string, boolean|nil>>
 local ChatFolds = {}
 ChatFolds.__index = ChatFolds
 
@@ -199,25 +198,19 @@ function ChatFolds:_get_fold_state(winid, line_nr)
 end
 
 --- @param winid integer
---- @return table<string, boolean|nil> fold_states
 function ChatFolds:_capture_window_fold_states(winid)
-    local fold_states = {}
-
-    for tool_call_id, tool_call_fold in pairs(self._tool_call_folds) do
+    for _, tool_call_fold in pairs(self._tool_call_folds) do
         local body_start_row, _, body_line_count =
             self:_resolve_body_range(tool_call_fold.extmark_id)
 
         if body_start_row and body_line_count and body_line_count > 0 then
             local fold_state = self:_get_fold_state(winid, body_start_row + 1)
-            fold_states[tool_call_id] = fold_state
 
             if fold_state ~= nil then
                 tool_call_fold.last_known_fold_state = fold_state
             end
         end
     end
-
-    return fold_states
 end
 
 --- @param winid integer
@@ -270,57 +263,17 @@ function ChatFolds:capture_visible_tool_call_state(tool_call_id)
         return
     end
 
-    --- @type table<integer, table<string, boolean|nil>>
-    local captured_window_states = {}
-
     for _, winid in ipairs(self:_get_visible_windows()) do
         local body_start_row, _, body_line_count =
             self:_resolve_body_range(tool_call_fold.extmark_id)
 
         if body_start_row and body_line_count and body_line_count > 0 then
             local fold_state = self:_get_fold_state(winid, body_start_row + 1)
-            captured_window_states[winid] = {
-                [tool_call_id] = fold_state,
-            }
 
             if fold_state ~= nil then
                 tool_call_fold.last_known_fold_state = fold_state
             end
         end
-    end
-
-    self._captured_window_states = captured_window_states
-end
-
---- @param winid integer
---- @param tool_call_id string
---- @return boolean|nil fold_state
-function ChatFolds:_get_captured_fold_state(winid, tool_call_id)
-    local fold_states = self._captured_window_states
-        and self._captured_window_states[winid]
-
-    if not fold_states then
-        return nil
-    end
-
-    return fold_states[tool_call_id]
-end
-
---- @param tool_call_id string
-function ChatFolds:_clear_captured_fold_state(tool_call_id)
-    if not self._captured_window_states then
-        return
-    end
-
-    for winid, fold_states in pairs(self._captured_window_states) do
-        fold_states[tool_call_id] = nil
-        if vim.tbl_isempty(fold_states) then
-            self._captured_window_states[winid] = nil
-        end
-    end
-
-    if vim.tbl_isempty(self._captured_window_states) then
-        self._captured_window_states = nil
     end
 end
 
@@ -348,10 +301,6 @@ function ChatFolds:_sync_fold_to_window(winid, tool_call_fold)
     local end_line = body_end_row + 1
     self:_set_fold_text_prefix(start_line, tool_call_fold.fold_text_prefix)
     local should_close = self:_get_fold_state(winid, start_line)
-    if should_close == nil then
-        should_close =
-            self:_get_captured_fold_state(winid, tool_call_fold.tool_call_id)
-    end
     if should_close == nil then
         should_close = tool_call_fold.last_known_fold_state
     end
@@ -444,8 +393,6 @@ function ChatFolds:sync_tool_call(tracker)
     for _, winid in ipairs(winids) do
         self:_sync_fold_to_window(winid, tool_call_fold)
     end
-
-    self:_clear_captured_fold_state(tracker.tool_call_id)
 end
 
 --- @param winid integer
@@ -523,7 +470,6 @@ function ChatFolds:reset()
     self._tool_call_folds = {}
     self._pending_tool_call_ids = {}
     self._reopen_restore_tool_call_ids = {}
-    self._captured_window_states = nil
     vim.b[self.bufnr][FOLD_TEXT_PREFIXES_VAR] = {}
 end
 
