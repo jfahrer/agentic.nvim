@@ -153,7 +153,7 @@ function SessionManager:new(tab_page_id)
 
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
     self.message_writer:set_provider_name(self.agent.provider_config.name)
-    self.chat_folds = ChatFolds:new(self.widget.buf_nrs.chat)
+    self.chat_folds = ChatFolds:new(self.widget.buf_nrs.chat, tab_page_id)
     self.message_writer:set_chat_folds(self.chat_folds)
     self.widget:set_on_before_hide(function()
         self.chat_folds:remember_visible_window_states()

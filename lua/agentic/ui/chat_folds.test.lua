@@ -23,6 +23,8 @@ describe("agentic.ui.ChatFolds", function()
     local original_folding
     --- @type agentic.UserConfig.AutoScroll|nil
     local original_auto_scroll
+    --- @type integer
+    local tab_page_id
 
     --- @param count integer
     --- @param prefix string|nil
@@ -133,9 +135,10 @@ describe("agentic.ui.ChatFolds", function()
             row = 0,
             col = 0,
         })
+        tab_page_id = vim.api.nvim_get_current_tabpage()
 
         writer = MessageWriter:new(bufnr)
-        chat_folds = ChatFolds:new(bufnr)
+        chat_folds = ChatFolds:new(bufnr, tab_page_id)
         writer:set_chat_folds(chat_folds)
         chat_folds:on_buf_win_enter(winid)
     end)
@@ -183,6 +186,23 @@ describe("agentic.ui.ChatFolds", function()
         assert.same({}, chat_folds._pending_tool_call_ids)
         assert.same({}, chat_folds._reopen_restore_tool_call_ids)
         assert.same({}, vim.b[bufnr]._agentic_fold_text_prefixes)
+    end)
+
+    it("only tracks visible windows in the owning tabpage", function()
+        local owner_winid = winid
+
+        vim.cmd("tabnew")
+        local other_tab_page_id = vim.api.nvim_get_current_tabpage()
+        local other_winid = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(other_winid, bufnr)
+
+        local visible_windows = chat_folds:_get_visible_windows()
+
+        assert.same({ owner_winid }, visible_windows)
+
+        vim.api.nvim_set_current_tabpage(other_tab_page_id)
+        vim.cmd("tabclose")
+        vim.api.nvim_set_current_tabpage(tab_page_id)
     end)
 
     it("creates a body-only fold with the marker in the fold text", function()
