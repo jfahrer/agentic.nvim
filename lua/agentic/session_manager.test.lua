@@ -285,10 +285,11 @@ describe("agentic.SessionManager", function()
             Config.folding = {
                 tool_calls = {
                     enabled = true,
+                    closed_by_default = true,
                     min_lines = 3,
                     kinds = {
                         fetch = {
-                            enabled = true,
+                            closed_by_default = true,
                             min_lines = 3,
                         },
                     },
@@ -325,7 +326,7 @@ describe("agentic.SessionManager", function()
                 tool_call_id = "hidden-grow",
                 kind = "fetch",
                 argument = "url",
-                status = "completed",
+                status = "in_progress",
                 body = { "line 1" },
             })
 
@@ -340,7 +341,7 @@ describe("agentic.SessionManager", function()
             session.message_writer:update_tool_call_block({
                 tool_call_id = "hidden-grow",
                 status = "completed",
-                body = { "line 2", "line 3", "line 4" },
+                body = { "line 2" },
             })
 
             assert.equal(1, session.chat_folds:get_pending_count())
@@ -428,7 +429,11 @@ describe("agentic.SessionManager", function()
                 extmark_id = 1,
                 kind = "fetch",
                 status = "completed",
-                policy = { enabled = true, min_lines = 3 },
+                policy = {
+                    enabled = true,
+                    closed_by_default = true,
+                    min_lines = 3,
+                },
                 fold_text_prefix = ExtmarkBlock.BODY_PREFIX,
                 should_render_fold = true,
                 default_closed = true,

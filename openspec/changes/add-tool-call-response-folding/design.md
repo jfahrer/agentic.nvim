@@ -75,18 +75,19 @@ Add a new top-level config section:
 folding = {
   tool_calls = {
     enabled = true,
+    closed_by_default = true,
     min_lines = 20,
     kinds = {
       fetch = {
-        enabled = true,
+        closed_by_default = true,
         min_lines = 8,
       },
       execute = {
-        enabled = true,
+        closed_by_default = true,
         min_lines = 12,
       },
       edit = {
-        enabled = false,
+        closed_by_default = false,
       },
     },
   },
@@ -104,10 +105,11 @@ kinds already stored in `tool_call_block.kind`, such as `fetch`,
 The proposed shipped defaults are:
 
 - `folding.tool_calls.enabled = true`
+- `folding.tool_calls.closed_by_default = true`
 - `folding.tool_calls.min_lines = 20`
-- `folding.tool_calls.kinds.fetch = { enabled = true, min_lines = 8 }`
-- `folding.tool_calls.kinds.execute = { enabled = true, min_lines = 12 }`
-- `folding.tool_calls.kinds.edit = { enabled = false }`
+- `folding.tool_calls.kinds.fetch = { closed_by_default = true, min_lines = 8 }`
+- `folding.tool_calls.kinds.execute = { closed_by_default = true, min_lines = 12 }`
+- `folding.tool_calls.kinds.edit = { closed_by_default = false }`
 
 These defaults keep short, useful output visible, fold obviously noisy
 web and shell output more aggressively, and avoid collapsing diffs or
@@ -126,15 +128,17 @@ written.
 
 The precedence rules are:
 
-1. `folding.tool_calls.enabled` gates automatic tool-call folding
-2. `folding.tool_calls.kinds[kind].enabled` overrides the family value
-   when present
+1. `folding.tool_calls.enabled` gates the whole tool-call folding feature
+2. `folding.tool_calls.kinds[kind].closed_by_default` overrides the
+   family value when present
 3. `folding.tool_calls.kinds[kind].min_lines` overrides
    `folding.tool_calls.min_lines` when present
-4. auto-folding runs only for `completed` tool calls
-5. `failed` tool calls may still become foldable when their rendered body
-   meets the effective threshold, but they start open by default
-6. non-terminal tool calls stay open by default
+4. completed tool calls with rendered body lines always get a fold range,
+   but start closed only when `closed_by_default` is true and they meet
+   the effective threshold
+5. `failed` tool calls with rendered body lines always get a fold range,
+   but they start open by default
+6. non-terminal tool calls stay open without a fold range
 
 Once the completion-time decision is stored on the tracked block, later
 `tool_call_update`s and fold refreshes reuse that stored default instead
@@ -201,8 +205,8 @@ That means the fold module should:
   visible during live updates
 - remembers the visible window's fold state before widget hide/show so
   the reopened window can preserve manual open/closed choices
-- records pending fold creation when a foldable tool call completes
-  while no chat window is visible
+- records pending fold creation when a completed tool call with body
+  lines finishes while no chat window is visible
 - creates those pending folds on the next chat-buffer `BufWinEnter`
 - applies the stored completion-time open/closed state only when the
   fold is first created by the plugin

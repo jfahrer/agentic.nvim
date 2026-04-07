@@ -6,6 +6,7 @@ local FOLD_TEXT_PREFIXES_VAR = "_agentic_fold_text_prefixes"
 
 --- @class agentic.ui.ChatFolds.Policy
 --- @field enabled boolean
+--- @field closed_by_default boolean
 --- @field min_lines integer
 
 --- @class agentic.ui.ChatFolds.ToolCallFold
@@ -53,17 +54,18 @@ local function resolve_policy(kind)
     local tool_call_config = Config.folding and Config.folding.tool_calls
         or {
             enabled = true,
+            closed_by_default = true,
             min_lines = 20,
             kinds = {},
         }
-    local family_enabled = tool_call_config.enabled ~= false
+    local feature_enabled = tool_call_config.enabled ~= false
     --- @type agentic.UserConfig.ToolCallFoldingKind|nil
     local kind_config = tool_call_config.kinds[kind]
 
     --- @type boolean
-    local enabled = family_enabled
-    if family_enabled and kind_config and kind_config.enabled ~= nil then
-        enabled = kind_config.enabled
+    local closed_by_default = tool_call_config.closed_by_default ~= false
+    if kind_config and kind_config.closed_by_default ~= nil then
+        closed_by_default = kind_config.closed_by_default
     end
 
     --- @type integer
@@ -74,7 +76,8 @@ local function resolve_policy(kind)
 
     --- @type agentic.ui.ChatFolds.Policy
     local policy = {
-        enabled = enabled == true,
+        enabled = feature_enabled,
+        closed_by_default = closed_by_default == true,
         min_lines = min_lines or 20,
     }
     return policy
@@ -386,15 +389,21 @@ end
 function ChatFolds:_decide_default_state(tool_call_fold)
     local _, _, body_line_count =
         self:_resolve_body_range(tool_call_fold.extmark_id)
+    local has_body = body_line_count ~= nil and body_line_count > 0
     local meets_threshold = body_line_count ~= nil
         and body_line_count > 0
-        and tool_call_fold.policy.enabled
+        and tool_call_fold.policy.closed_by_default
         and body_line_count >= tool_call_fold.policy.min_lines
 
     tool_call_fold.should_render_fold = false
 
+    if not has_body then
+        tool_call_fold.default_closed = nil
+        return
+    end
+
     if tool_call_fold.status == "failed" then
-        tool_call_fold.should_render_fold = meets_threshold
+        tool_call_fold.should_render_fold = true
         tool_call_fold.default_closed = false
         return
     end
@@ -404,7 +413,7 @@ function ChatFolds:_decide_default_state(tool_call_fold)
         return
     end
 
-    tool_call_fold.should_render_fold = meets_threshold
+    tool_call_fold.should_render_fold = true
 
     if tool_call_fold.last_known_fold_state ~= nil then
         tool_call_fold.default_closed = tool_call_fold.last_known_fold_state
@@ -419,7 +428,10 @@ function ChatFolds:sync_tool_call(tracker)
     local tool_call_fold = self:_ensure_tool_call_fold(tracker)
     self:_decide_default_state(tool_call_fold)
 
-    if tool_call_fold.should_render_fold ~= true then
+    if
+        not tool_call_fold.policy.enabled
+        or tool_call_fold.should_render_fold ~= true
+    then
         self:_clear_tool_call_fold_text_prefix(tool_call_fold)
         self._pending_tool_call_ids[tracker.tool_call_id] = nil
         self._reopen_restore_tool_call_ids[tracker.tool_call_id] = nil

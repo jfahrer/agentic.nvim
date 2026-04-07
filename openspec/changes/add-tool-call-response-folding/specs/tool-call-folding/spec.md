@@ -6,11 +6,10 @@ The chat buffer SHALL expose tool call response bodies as standard
 Neovim folds so users can use native fold commands on tool output while
 the tool header and status remain visible.
 
-#### Scenario: Create a fold for a new tool call response
+#### Scenario: Create a fold for a new terminal tool call response
 
-- **WHEN** a tool call block with response body lines is written to the
-  chat buffer
-- **AND** tool call folding is enabled
+- **WHEN** a completed or failed tool call block with response body lines
+  is written to the chat buffer
 - **THEN** the response body lines are placed inside a native Neovim
   fold
 - **AND** the tool header line remains visible outside the fold
@@ -42,9 +41,9 @@ the tool header and status remain visible.
 ### Requirement: Tool call fold defaults SHALL be configurable
 
 The system SHALL provide a `folding.tool_calls` configuration section
-with `enabled`, `min_lines`, and `kinds` fields. Each
-`folding.tool_calls.kinds.<kind>` entry SHALL support `enabled` and
-`min_lines` overrides.
+with `enabled`, `closed_by_default`, `min_lines`, and `kinds` fields.
+Each `folding.tool_calls.kinds.<kind>` entry SHALL support
+`closed_by_default` and `min_lines` overrides.
 
 The `kinds` table SHALL use the normalized tool kinds rendered by the
 chat buffer, such as `fetch`, `execute`, `edit`, and `read`.
@@ -57,39 +56,42 @@ existing `tool_calls` configuration.
 
 - **WHEN** the user does not override `folding.tool_calls`
 - **THEN** `folding.tool_calls.enabled = true`
+- **AND** `folding.tool_calls.closed_by_default = true`
 - **AND** `folding.tool_calls.min_lines = 20`
-- **AND** `folding.tool_calls.kinds.fetch.enabled = true`
+- **AND** `folding.tool_calls.kinds.fetch.closed_by_default = true`
 - **AND** `folding.tool_calls.kinds.fetch.min_lines = 8`
-- **AND** `folding.tool_calls.kinds.execute.enabled = true`
+- **AND** `folding.tool_calls.kinds.execute.closed_by_default = true`
 - **AND** `folding.tool_calls.kinds.execute.min_lines = 12`
-- **AND** `folding.tool_calls.kinds.edit.enabled = false`
+- **AND** `folding.tool_calls.kinds.edit.closed_by_default = false`
 
 #### Scenario: Per-tool override beats the global default
 
 - **WHEN** `folding.tool_calls.enabled = true`
+- **AND** `folding.tool_calls.closed_by_default = true`
 - **AND** `folding.tool_calls.min_lines = 20`
-- **AND** `folding.tool_calls.kinds.edit.enabled = false`
-- **AND** `folding.tool_calls.kinds.fetch.enabled = true`
+- **AND** `folding.tool_calls.kinds.edit.closed_by_default = false`
+- **AND** `folding.tool_calls.kinds.fetch.closed_by_default = true`
 - **AND** `folding.tool_calls.kinds.fetch.min_lines = 8`
-- **THEN** completed `edit` tool call responses do not auto-fold
+- **THEN** completed `edit` tool call responses remain open by default
+- **AND** completed `edit` tool call responses remain manually foldable
 - **AND** completed `fetch` tool call responses fold at 8 rendered body
   lines instead of 20
 
-#### Scenario: Folding can be disabled entirely
+#### Scenario: Automatic closing can be disabled entirely
 
 - **WHEN** `folding.tool_calls.enabled = false`
-- **THEN** the system does not create automatic tool response folds
+- **THEN** the system does not create managed tool response folds
 
-### Requirement: Tool call responses SHALL auto-fold only on completion
+### Requirement: Tool call response default fold state SHALL be decided on completion
 
-Automatic tool call folding SHALL be decided only when a tool call
-reaches `completed`, using the final rendered body line count and the
-effective `min_lines` threshold.
+Automatic closing of tool call folds SHALL be decided only when a tool
+call reaches `completed`, using the final rendered body line count and
+the effective `min_lines` threshold.
 
 #### Scenario: Completed tool call meets the threshold
 
 - **WHEN** a tool call reaches `completed`
-- **AND** automatic folding is enabled for its tool kind
+- **AND** `closed_by_default` is enabled for its tool kind
 - **AND** its rendered response body line count is greater than or equal
   to the effective `min_lines` threshold
 - **THEN** the tool response fold is created in the closed state by
@@ -98,16 +100,28 @@ effective `min_lines` threshold.
 #### Scenario: Completed tool call does not meet the threshold
 
 - **WHEN** a tool call reaches `completed`
-- **AND** automatic folding is enabled for its tool kind
+- **AND** `closed_by_default` is enabled for its tool kind
 - **AND** its rendered response body line count is less than the
   effective `min_lines` threshold
-- **THEN** the tool response remains open by default
+- **THEN** the tool response fold is created in the open state by
+  default
+- **AND** the user can manually close or reopen that fold with normal
+  Neovim fold commands
+
+#### Scenario: Completed tool call is configured to start open
+
+- **WHEN** a tool call reaches `completed`
+- **AND** `closed_by_default` is disabled for its tool kind
+- **AND** its response has rendered body lines
+- **THEN** the tool response fold is created in the open state by
+  default
+- **AND** the user can manually close or reopen that fold with normal
+  Neovim fold commands
 
 #### Scenario: Failed tool call stays open by default
 
 - **WHEN** a tool call reaches `failed`
-- **AND** its rendered response body line count is greater than or equal
-  to the effective `min_lines` threshold
+- **AND** its response has rendered body lines
 - **THEN** the tool response fold is created in the open state by default
 - **AND** the user can manually close or reopen that fold with normal
   Neovim fold commands
@@ -116,11 +130,11 @@ effective `min_lines` threshold.
 
 The system SHALL preserve Neovim's restored fold state on widget
 close/reopen for an already-edited chat buffer and SHALL create tool
-response folds only for blocks that became foldable while no chat
-window was visible.
+response folds only for blocks whose fold range could not be created
+while no chat window was visible.
 
-The folding subsystem SHALL record those hidden-time foldable tool calls
-as pending and SHALL consume that pending set on the next chat-window
+The folding subsystem SHALL record those hidden-time tool calls as
+pending and SHALL consume that pending set on the next chat-window
 `BufWinEnter`.
 
 #### Scenario: Reopen the chat widget after a manual fold toggle
@@ -134,7 +148,7 @@ as pending and SHALL consume that pending set on the next chat-window
 #### Scenario: Tool call completes while the chat widget is hidden
 
 - **WHEN** a tool call reaches `completed`
-- **AND** its response meets the effective auto-fold threshold
+- **AND** its response has rendered body lines
 - **AND** the chat buffer has no visible chat window at that moment
 - **THEN** the folding subsystem records that tool call as pending
 - **AND** the fold is created when the chat widget is shown again

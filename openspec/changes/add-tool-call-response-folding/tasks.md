@@ -3,13 +3,14 @@
 ## 1. Add configuration and docs
 
 - [x] 1.1 Add `folding.tool_calls.enabled`,
+  `folding.tool_calls.closed_by_default`,
   `folding.tool_calls.min_lines`, and nested
-  `folding.tool_calls.kinds.<kind>.enabled` /
+  `folding.tool_calls.kinds.<kind>.closed_by_default` /
   `folding.tool_calls.kinds.<kind>.min_lines` to
   `lua/agentic/config_default.lua`
 - [x] 1.2 Set the documented defaults: family `min_lines = 20`,
   `fetch.min_lines = 8`, `execute.min_lines = 12`, and
-  `edit.enabled = false`
+  `edit.closed_by_default = false`
 - [x] 1.3 Document the new config in `README.md`, including an example
   that folds completed `fetch` output at a lower threshold while leaving
   `edit` open
