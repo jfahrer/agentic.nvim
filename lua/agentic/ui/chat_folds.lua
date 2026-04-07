@@ -421,16 +421,11 @@ function ChatFolds:sync_reopen_states(winid)
     for tool_call_id, _ in pairs(self._reopen_restore_tool_call_ids) do
         local tool_call_fold = self._tool_call_folds[tool_call_id]
         if tool_call_fold then
-            local body_start_row, _, body_line_count =
+            local _, _, body_line_count =
                 self:_resolve_body_range(tool_call_fold.extmark_id)
 
-            if body_start_row and body_line_count and body_line_count > 0 then
-                local existing_fold_state =
-                    self:_get_fold_state(winid, body_start_row + 1)
-
-                if existing_fold_state == nil then
-                    self:_sync_fold_to_window(winid, tool_call_fold)
-                end
+            if body_line_count and body_line_count > 0 then
+                self:_sync_fold_to_window(winid, tool_call_fold)
             end
         end
 

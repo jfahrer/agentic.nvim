@@ -483,6 +483,44 @@ describe("agentic.ui.ChatFolds", function()
         assert.is_true(chat_folds:_get_fold_state(winid, body_line))
     end)
 
+    it("resyncs closed fold ranges after hidden tool call growth", function()
+        writer:write_tool_call_block(
+            make_block("fetch-grow-reopen", "fetch", "completed", 3)
+        )
+
+        local body_line = get_body_info("fetch-grow-reopen")
+        assert.is_true(chat_folds:_get_fold_state(winid, body_line))
+
+        chat_folds:remember_visible_window_states()
+        vim.api.nvim_win_close(winid, true)
+
+        writer:update_tool_call_block({
+            tool_call_id = "fetch-grow-reopen",
+            status = "completed",
+            body = { "line 4", "line 5" },
+        })
+
+        winid = vim.api.nvim_open_win(bufnr, true, {
+            relative = "editor",
+            width = 80,
+            height = 40,
+            row = 0,
+            col = 0,
+        })
+
+        chat_folds:on_buf_win_enter(winid)
+
+        local body_line_count
+        body_line, _, body_line_count = get_body_info("fetch-grow-reopen")
+
+        local fold_end = vim.api.nvim_win_call(winid, function()
+            return vim.fn.foldclosedend(body_line)
+        end)
+
+        assert.is_true(chat_folds:_get_fold_state(winid, body_line))
+        assert.equal(body_line + body_line_count - 1, fold_end)
+    end)
+
     it(
         "preserves restored fold state when reopening the chat window",
         function()
