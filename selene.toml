@@ -4,7 +4,6 @@ exclude = [
     "lazy_repro/**",
     "deps/**",
     ".local/**",
-    ".worktrees/**",
 ]
 
 [lints]
