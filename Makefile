@@ -7,7 +7,12 @@ STYLUA   ?= $(shell which stylua 2>/dev/null || echo "$(HOME)/.local/share/nvim/
 PROJECT ?= lua/ tests/
 LOGDIR  ?= .luals-log
 
-.PHONY: luals selene selene-file format-check format format-file check test validate benchmark-tool-call-folding install-hooks
+.PHONY: all clean luals selene selene-file format-check format format-file check test validate benchmark-tool-call-folding install-hooks
+
+all: validate
+
+clean:
+	rm -rf .local $(LOGDIR)
 
 test:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
