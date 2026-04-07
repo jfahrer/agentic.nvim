@@ -321,18 +321,19 @@ local function configure_benchmark_defaults()
     local folding = {
         tool_calls = {
             enabled = true,
+            closed_by_default = true,
             min_lines = 20,
             kinds = {
                 fetch = {
-                    enabled = true,
+                    closed_by_default = true,
                     min_lines = FETCH_MIN_LINES,
                 },
                 execute = {
-                    enabled = true,
+                    closed_by_default = true,
                     min_lines = EXECUTE_MIN_LINES,
                 },
                 edit = {
-                    enabled = false,
+                    closed_by_default = false,
                 },
             },
         },

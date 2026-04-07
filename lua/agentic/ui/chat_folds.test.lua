@@ -89,18 +89,19 @@ describe("agentic.ui.ChatFolds", function()
         Config.folding = {
             tool_calls = {
                 enabled = true,
+                closed_by_default = true,
                 min_lines = 3,
                 kinds = {
                     fetch = {
-                        enabled = true,
+                        closed_by_default = true,
                         min_lines = 2,
                     },
                     execute = {
-                        enabled = true,
+                        closed_by_default = true,
                         min_lines = 4,
                     },
                     edit = {
-                        enabled = false,
+                        closed_by_default = false,
                     },
                 },
             },
@@ -158,58 +159,78 @@ describe("agentic.ui.ChatFolds", function()
         )
     end)
 
-    it("applies family and per-kind folding thresholds", function()
-        Config.folding = {
-            tool_calls = {
-                enabled = true,
-                min_lines = 20,
-                kinds = {
-                    fetch = {
-                        enabled = true,
-                        min_lines = 8,
-                    },
-                    execute = {
-                        enabled = true,
-                        min_lines = 12,
-                    },
-                    edit = {
-                        enabled = false,
+    it(
+        "applies global enablement and per-kind closed state thresholds",
+        function()
+            Config.folding = {
+                tool_calls = {
+                    enabled = true,
+                    closed_by_default = true,
+                    min_lines = 20,
+                    kinds = {
+                        fetch = {
+                            closed_by_default = true,
+                            min_lines = 8,
+                        },
+                        execute = {
+                            closed_by_default = true,
+                            min_lines = 12,
+                        },
+                        edit = {
+                            closed_by_default = false,
+                        },
                     },
                 },
-            },
-        }
+            }
 
-        writer:write_tool_call_block(
-            make_block("fetch-8", "fetch", "completed", 8)
-        )
-        writer:write_tool_call_block(
-            make_block("read-19", "read", "completed", 19)
-        )
-        writer:write_tool_call_block(
-            make_block("execute-12", "execute", "completed", 12)
-        )
-        writer:write_tool_call_block(
-            make_block("edit-40", "edit", "completed", 40)
-        )
+            writer:write_tool_call_block(
+                make_block("fetch-8", "fetch", "completed", 8)
+            )
+            writer:write_tool_call_block(
+                make_block("read-19", "read", "completed", 19)
+            )
+            writer:write_tool_call_block(
+                make_block("execute-12", "execute", "completed", 12)
+            )
+            writer:write_tool_call_block(
+                make_block("execute-11", "execute", "completed", 11)
+            )
+            writer:write_tool_call_block(
+                make_block("edit-40", "edit", "completed", 40)
+            )
 
-        local fetch_body_line = get_body_info("fetch-8")
-        local read_body_line = get_body_info("read-19")
-        local execute_body_line = get_body_info("execute-12")
-        local edit_body_line = get_body_info("edit-40")
+            local fetch_body_line = get_body_info("fetch-8")
+            local read_body_line = get_body_info("read-19")
+            local execute_body_line = get_body_info("execute-12")
+            local execute_open_body_line = get_body_info("execute-11")
+            local edit_body_line = get_body_info("edit-40")
 
-        assert.is_true(chat_folds:_get_fold_state(winid, fetch_body_line))
-        assert.is_nil(chat_folds:_get_fold_state(winid, read_body_line))
-        assert.is_true(chat_folds:_get_fold_state(winid, execute_body_line))
-        assert.is_nil(chat_folds:_get_fold_state(winid, edit_body_line))
+            assert.is_true(chat_folds:_get_fold_state(winid, fetch_body_line))
+            assert.is_false(chat_folds:_get_fold_state(winid, read_body_line))
+            assert.is_true(chat_folds:_get_fold_state(winid, execute_body_line))
+            assert.is_false(
+                chat_folds:_get_fold_state(winid, execute_open_body_line)
+            )
+            assert.is_false(chat_folds:_get_fold_state(winid, edit_body_line))
 
-        Config.folding.tool_calls.enabled = false
-        writer:write_tool_call_block(
-            make_block("fetch-disabled", "fetch", "completed", 20)
-        )
+            Config.folding.tool_calls.enabled = false
+            writer:write_tool_call_block(
+                make_block("fetch-disabled", "fetch", "completed", 20)
+            )
 
-        local disabled_body_line = get_body_info("fetch-disabled")
-        assert.is_nil(chat_folds:_get_fold_state(winid, disabled_body_line))
-    end)
+            local disabled_body_line = get_body_info("fetch-disabled")
+            assert.is_nil(chat_folds:_get_fold_state(winid, disabled_body_line))
+
+            set_fold_state(execute_open_body_line, true)
+            set_fold_state(edit_body_line, true)
+
+            assert.is_true(
+                chat_folds:_get_fold_state(winid, execute_open_body_line)
+            )
+            assert.is_true(chat_folds:_get_fold_state(winid, edit_body_line))
+            assert.is_nil(chat_folds:_get_fold_state(winid, disabled_body_line))
+        end
+    )
 
     it(
         "waits for completion and leaves failed tool calls open but foldable",
@@ -312,48 +333,43 @@ describe("agentic.ui.ChatFolds", function()
         end
     )
 
-    it(
-        "folds after a hidden update grows a completed response past the threshold",
-        function()
-            writer:write_tool_call_block(
-                make_block("fetch-hidden-grow", "fetch", "completed", 1)
-            )
+    it("backfills a fold when a hidden tool call completes", function()
+        writer:write_tool_call_block(
+            make_block("fetch-hidden-grow", "fetch", "in_progress", 1)
+        )
 
-            local initial_body_line = get_body_info("fetch-hidden-grow")
-            assert.is_nil(chat_folds:_get_fold_state(winid, initial_body_line))
+        local initial_body_line = get_body_info("fetch-hidden-grow")
+        assert.is_nil(chat_folds:_get_fold_state(winid, initial_body_line))
 
-            vim.api.nvim_win_close(winid, true)
+        vim.api.nvim_win_close(winid, true)
 
-            writer:update_tool_call_block({
-                tool_call_id = "fetch-hidden-grow",
-                status = "completed",
-                body = { "line 2", "line 3", "line 4" },
-            })
+        writer:update_tool_call_block({
+            tool_call_id = "fetch-hidden-grow",
+            status = "completed",
+            body = { "line 2" },
+        })
 
-            assert.is_true(
-                chat_folds._pending_tool_call_ids["fetch-hidden-grow"]
-            )
+        assert.is_true(chat_folds._pending_tool_call_ids["fetch-hidden-grow"])
 
-            winid = vim.api.nvim_open_win(bufnr, true, {
-                relative = "editor",
-                width = 80,
-                height = 40,
-                row = 0,
-                col = 0,
-            })
+        winid = vim.api.nvim_open_win(bufnr, true, {
+            relative = "editor",
+            width = 80,
+            height = 40,
+            row = 0,
+            col = 0,
+        })
 
-            local before_view = vim.fn.winsaveview()
+        local before_view = vim.fn.winsaveview()
 
-            chat_folds:on_buf_win_enter(winid)
+        chat_folds:on_buf_win_enter(winid)
 
-            local after_view = vim.fn.winsaveview()
+        local after_view = vim.fn.winsaveview()
 
-            local updated_body_line = get_body_info("fetch-hidden-grow")
-            assert.is_true(chat_folds:_get_fold_state(winid, updated_body_line))
-            assert.equal(before_view.lnum, after_view.lnum)
-            assert.equal(before_view.topline, after_view.topline)
-        end
-    )
+        local updated_body_line = get_body_info("fetch-hidden-grow")
+        assert.is_true(chat_folds:_get_fold_state(winid, updated_body_line))
+        assert.equal(before_view.lnum, after_view.lnum)
+        assert.equal(before_view.topline, after_view.topline)
+    end)
 
     it("preserves a user-opened fold across hidden updates", function()
         writer:write_tool_call_block(

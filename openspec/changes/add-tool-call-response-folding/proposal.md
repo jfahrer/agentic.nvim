@@ -13,12 +13,14 @@ to collapse while the tool name and status remain visible.
 - Add an `agentic.ui.ChatFolds` module to own tool-response folding
   policy, fold state tracking, and window-local fold creation
 - Add a future-friendly `folding.tool_calls` configuration section with
-  family-level enablement, a default `min_lines` threshold, and
-  per-tool `enabled`/`min_lines` overrides
+  global enablement, a family `closed_by_default` setting, a default
+  `min_lines` threshold, and per-tool `closed_by_default`/`min_lines`
+  overrides
 - Ship opinionated defaults that fold noisy completed `fetch` and
   `execute` responses sooner, while leaving `edit` responses open
-- Fold only completed tool calls whose rendered response body meets the
-  effective line threshold; keep in-progress and failed tool calls open
+- Keep completed and failed tool calls manually foldable whenever they
+  render body lines, while using thresholds only to decide whether
+  completed responses start closed by default
 - Render folded tool responses with a compact custom fold header text
   that preserves the block marker, such as `│ response hidden (N lines)`
 - Respect Neovim's built-in fold restoration when reopening an existing

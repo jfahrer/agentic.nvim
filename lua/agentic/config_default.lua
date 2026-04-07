@@ -54,11 +54,12 @@
 --- @field diff_preview table<string, string>
 
 --- @class agentic.UserConfig.ToolCallFoldingKind
---- @field enabled? boolean
+--- @field closed_by_default? boolean
 --- @field min_lines? integer
 
 --- @class agentic.UserConfig.ToolCallFolding
 --- @field enabled boolean
+--- @field closed_by_default boolean
 --- @field min_lines integer
 --- @field kinds table<string, agentic.UserConfig.ToolCallFoldingKind>
 
@@ -449,18 +450,19 @@ local ConfigDefault = {
     folding = {
         tool_calls = {
             enabled = true,
+            closed_by_default = true,
             min_lines = 20,
             kinds = {
                 fetch = {
-                    enabled = true,
+                    closed_by_default = true,
                     min_lines = 8,
                 },
                 execute = {
-                    enabled = true,
+                    closed_by_default = true,
                     min_lines = 12,
                 },
                 edit = {
-                    enabled = false,
+                    closed_by_default = false,
                 },
             },
         },

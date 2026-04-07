@@ -699,16 +699,19 @@ visible. In-progress and failed tool calls stay open by default.
     folding = {
       tool_calls = {
         enabled = true,
+        closed_by_default = true,
         min_lines = 20,
         kinds = {
           fetch = {
+            closed_by_default = true,
             min_lines = 8,
           },
           execute = {
+            closed_by_default = true,
             min_lines = 12,
           },
           edit = {
-            enabled = false,
+            closed_by_default = false,
           },
         },
       },
@@ -720,15 +723,18 @@ visible. In-progress and failed tool calls stay open by default.
 This example folds completed `fetch` output sooner while leaving `edit` tool
 calls open.
 
-- `folding.tool_calls.enabled` - Master switch for automatic tool-response folds
-- `folding.tool_calls.min_lines` - Default rendered response-body threshold
-- `folding.tool_calls.kinds.<kind>.enabled` - Per-tool override for auto-folding
-- `folding.tool_calls.kinds.<kind>.min_lines` - Per-tool line threshold override
+- `folding.tool_calls.enabled` - Master switch for tool-response fold management
+- `folding.tool_calls.closed_by_default` - Family default for whether completed tool-response folds start closed
+- `folding.tool_calls.min_lines` - Default rendered response-body threshold for starting closed
+- `folding.tool_calls.kinds.<kind>.closed_by_default` - Per-tool override for whether completed folds start closed
+- `folding.tool_calls.kinds.<kind>.min_lines` - Per-tool line threshold override for starting closed
 
 Supported normalized tool kinds include `fetch`, `execute`, `edit`, and `read`.
 Folded tool responses preserve their block marker, rendering text like
 `│ response hidden (N lines)`, and you can use Neovim's normal fold commands
-like `zc` and `zo` inside the chat buffer.
+like `zc` and `zo` inside the chat buffer. Completed and failed tool calls stay
+manually foldable even when `closed_by_default = false` or the response is
+below the threshold.
 
 ### Slash Commands
 
