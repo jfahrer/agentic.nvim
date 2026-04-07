@@ -185,13 +185,9 @@ end
 
 --- @param winid integer
 function ChatFolds:_configure_window(winid)
-    vim.api.nvim_set_option_value("foldmethod", "manual", { win = winid })
-    vim.api.nvim_set_option_value("foldenable", true, { win = winid })
-    vim.api.nvim_set_option_value(
-        "foldtext",
-        "v:lua.require'agentic.ui.chat_folds'.foldtext()",
-        { win = winid }
-    )
+    vim.wo[winid].foldmethod = "manual"
+    vim.wo[winid].foldenable = true
+    vim.wo[winid].foldtext = "v:lua.require'agentic.ui.chat_folds'.foldtext()"
 end
 
 --- @param winid integer
