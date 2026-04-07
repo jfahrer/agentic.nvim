@@ -1,9 +1,8 @@
---- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch, need-check-nil
+--- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
 local AgentModes = require("agentic.acp.agent_modes")
-local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionManager = require("agentic.session_manager")
 
@@ -270,14 +269,11 @@ describe("agentic.SessionManager", function()
         --- @type TestStub
         local slash_commands_stub
         --- @type integer
-        local chat_bufnr
-        --- @type integer
         local input_bufnr
 
         before_each(function()
             local SlashCommands = require("agentic.acp.slash_commands")
 
-            chat_bufnr = vim.api.nvim_create_buf(false, true)
             input_bufnr = vim.api.nvim_create_buf(false, true)
             slash_commands_stub = spy.stub(SlashCommands, "setCommands")
         end)
@@ -285,40 +281,13 @@ describe("agentic.SessionManager", function()
         after_each(function()
             slash_commands_stub:revert()
 
-            if chat_bufnr and vim.api.nvim_buf_is_valid(chat_bufnr) then
-                vim.api.nvim_buf_delete(chat_bufnr, { force = true })
-            end
-
             if input_bufnr and vim.api.nvim_buf_is_valid(input_bufnr) then
                 vim.api.nvim_buf_delete(input_bufnr, { force = true })
             end
         end)
 
-        it("resets chat fold state along with the session UI", function()
-            local ChatFolds = require("agentic.ui.chat_folds")
-            local ExtmarkBlock = require("agentic.utils.extmark_block")
-
-            local chat_folds = ChatFolds:new(chat_bufnr)
-            chat_folds._tool_call_folds["tool-reset-1"] = {
-                tool_call_id = "tool-reset-1",
-                extmark_id = 1,
-                kind = "fetch",
-                status = "completed",
-                policy = {
-                    enabled = true,
-                    closed_by_default = true,
-                    min_lines = 3,
-                },
-                fold_text_prefix = ExtmarkBlock.BODY_PREFIX,
-                should_render_fold = true,
-                default_closed = true,
-                last_known_fold_state = true,
-            }
-            chat_folds._pending_tool_call_ids["tool-reset-1"] = true
-            chat_folds._reopen_restore_tool_call_ids["tool-reset-1"] = true
-            vim.b[chat_bufnr]._agentic_fold_text_prefixes = {
-                ["3"] = ExtmarkBlock.BODY_PREFIX,
-            }
+        it("resets chat folds along with the session UI", function()
+            local reset_spy = spy.new(function() end)
 
             local session = {
                 session_id = "session-1",
@@ -332,7 +301,7 @@ describe("agentic.SessionManager", function()
                 code_selection = { clear = spy.new(function() end) },
                 diagnostics_list = { clear = spy.new(function() end) },
                 config_options = { clear = spy.new(function() end) },
-                chat_folds = chat_folds,
+                chat_folds = { reset = reset_spy },
                 permission_manager = { clear = spy.new(function() end) },
                 status_animation = { stop = spy.new(function() end) },
                 chat_history = { messages = { "old" } },
@@ -345,32 +314,29 @@ describe("agentic.SessionManager", function()
 
             session:_cancel_session()
 
-            assert.same({}, chat_folds._tool_call_folds)
-            assert.same({}, chat_folds._pending_tool_call_ids)
-            assert.same({}, chat_folds._reopen_restore_tool_call_ids)
-            assert.same({}, vim.b[chat_bufnr]._agentic_fold_text_prefixes)
+            assert.spy(reset_spy).was.called(1)
         end)
     end)
     describe("FileChangedShell autocommand", function()
-        local original_fcs_choice
+        local Child = require("tests.helpers.child")
+        local child = Child:new()
 
         before_each(function()
-            original_fcs_choice = vim.v.fcs_choice
-            require("agentic").setup({})
+            child.setup()
         end)
 
         after_each(function()
-            vim.v.fcs_choice = original_fcs_choice
+            child.stop()
         end)
 
         it("sets fcs_choice to reload when FileChangedShell fires", function()
-            vim.v.fcs_choice = ""
-            vim.api.nvim_exec_autocmds("FileChangedShell", {
+            child.v.fcs_choice = ""
+            child.api.nvim_exec_autocmds("FileChangedShell", {
                 group = "AgenticCleanup",
                 pattern = "*",
             })
 
-            assert.equal("reload", vim.v.fcs_choice)
+            assert.equal("reload", child.v.fcs_choice)
         end)
     end)
 
@@ -397,6 +363,7 @@ describe("agentic.SessionManager", function()
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
+            local Config = require("agentic.config")
 
             notify_stub = spy.stub(Logger, "notify")
             schedule_queue = {}
@@ -489,6 +456,7 @@ describe("agentic.SessionManager", function()
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
+            local Config = require("agentic.config")
 
             notify_stub = spy.stub(Logger, "notify")
             schedule_queue = {}
@@ -593,6 +561,7 @@ describe("agentic.SessionManager", function()
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
+            local Config = require("agentic.config")
 
             notify_stub = spy.stub(Logger, "notify")
             schedule_stub = spy.stub(vim, "schedule")
@@ -680,6 +649,7 @@ describe("agentic.SessionManager", function()
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
+            local Config = require("agentic.config")
 
             notify_stub = spy.stub(Logger, "notify")
             schedule_queue = {}

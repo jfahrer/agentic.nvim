@@ -155,6 +155,36 @@ describe("agentic.ui.ChatFolds", function()
         end
     end)
 
+    it("clears tracked fold state on reset", function()
+        chat_folds._tool_call_folds["tool-reset-1"] = {
+            tool_call_id = "tool-reset-1",
+            extmark_id = 1,
+            kind = "fetch",
+            status = "completed",
+            policy = {
+                enabled = true,
+                closed_by_default = true,
+                min_lines = 3,
+            },
+            fold_text_prefix = ExtmarkBlock.BODY_PREFIX,
+            should_render_fold = true,
+            default_closed = true,
+            last_known_fold_state = true,
+        }
+        chat_folds._pending_tool_call_ids["tool-reset-1"] = true
+        chat_folds._reopen_restore_tool_call_ids["tool-reset-1"] = true
+        vim.b[bufnr]._agentic_fold_text_prefixes = {
+            ["3"] = ExtmarkBlock.BODY_PREFIX,
+        }
+
+        chat_folds:reset()
+
+        assert.same({}, chat_folds._tool_call_folds)
+        assert.same({}, chat_folds._pending_tool_call_ids)
+        assert.same({}, chat_folds._reopen_restore_tool_call_ids)
+        assert.same({}, vim.b[bufnr]._agentic_fold_text_prefixes)
+    end)
+
     it("creates a body-only fold with the marker in the fold text", function()
         writer:write_tool_call_block(
             make_block("fetch-1", "fetch", "completed", 3)
