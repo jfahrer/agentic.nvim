@@ -862,10 +862,10 @@ You can customize the icons used for diagnostics in the context panel:
   "carlos-algms/agentic.nvim",
   opts = {
     diagnostic_icons = {
-      error = "❌",
-      warn = "⚠️",
-      info = "ℹ️",
-      hint = "✨",
+      error = "❌",    -- Diagnostic severity: error
+      warn = "⚠️",     -- Diagnostic severity: warning
+      info = "ℹ️",      -- Diagnostic severity: information
+      hint = "✨",     -- Diagnostic severity: hint
     },
   },
 }
@@ -873,6 +873,76 @@ You can customize the icons used for diagnostics in the context panel:
 
 Default icons use emoji characters (❌, ⚠️, ℹ️, ✨) but you can use any string,
 including Nerd Font icons or plain text.
+
+### Customizing Status Icons
+
+You can customize the icons used to indicate tool call status in the chat:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    status_icons = {
+      pending = "󰔛",      -- Tool call awaiting execution
+      in_progress = "󰔛",  -- Tool currently executing
+      completed = "✔",    -- Tool executed successfully
+      failed = "",       -- Tool execution failed
+    },
+  },
+}
+```
+
+### Customizing Permission Icons
+
+You can customize the icons used in the permission approval workflow:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    permission_icons = {
+      allow_once = "",    -- Allow this execution only
+      allow_always = "",  -- Allow all future executions
+      reject_once = "",    -- Reject this execution only
+      reject_always = "󰜺",  -- Reject all future executions
+    },
+  },
+}
+```
+
+### Customizing Chat Icons
+
+You can customize the icons used to identify user and agent messages in the chat:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    chat_icons = {
+      user = " ",    -- Icon shown for user messages
+      agent = "󱚠 ",  -- Icon shown for agent/AI messages
+    },
+  },
+}
+```
+
+### Customizing Message Icons
+
+You can customize the icons used for messages and interaction states:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    message_icons = {
+      thinking = "🧠",   -- Shown when the agent is thinking/reasoning
+      finished = "🏁",   -- Shown when the interaction completes successfully
+      stopped = "🛑",     -- Shown when the user cancels the generation
+      error = "❌",      -- Shown when the interaction ends with an error
+    },
+  },
+}
+```
 
 ## Integration with other Plugins
 
@@ -1051,8 +1121,7 @@ the the acknowledgments 😊.
   and sidebar structured with multiple panels
 
 [claude-agent-acp]: https://github.com/agentclientprotocol/claude-agent-acp
-[claude-agent-acp-releases]:
-  https://github.com/agentclientprotocol/claude-agent-acp/releases
+[claude-agent-acp-releases]: https://github.com/agentclientprotocol/claude-agent-acp/releases
 [gemini-cli]: https://github.com/gemini-cli/gemini-cli
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
@@ -1062,10 +1131,8 @@ the the acknowledgments 😊.
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
 [mistral-vibe]: https://github.com/mistralai/mistral-vibe
 [mistral-vibe-releases]: https://github.com/mistralai/mistral-vibe/releases
-[preview-diff-side-by-side-image]:
-  https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
-[preview-diff-inline-image]:
-  https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
+[preview-diff-side-by-side-image]: https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
+[preview-diff-inline-image]: https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
 [copilot-cli]: https://github.com/github/copilot-cli
 [cline]: https://github.com/cline/cline
 [cline-docs]: https://docs.cline.bot/getting-started/installing-cline
