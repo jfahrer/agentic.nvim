@@ -688,7 +688,7 @@ Use `]c` and `[c` to navigate between diff hunks (configurable).
 
 ### Tool Call Folding
 
-Completed tool call responses can be folded with native Neovim manual folds.
+Completed and failed tool call responses use native Neovim manual folds.
 Agentic only folds the response body, so the tool header and status stay
 visible. In-progress and failed tool calls stay open by default.
 

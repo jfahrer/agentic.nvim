@@ -3,6 +3,7 @@ agentic-blink-cmp	agentic.txt	/*agentic-blink-cmp*
 agentic-chat-icons	agentic.txt	/*agentic-chat-icons*
 agentic-config-acp-providers	agentic.txt	/*agentic-config-acp-providers*
 agentic-config-diff-preview	agentic.txt	/*agentic-config-diff-preview*
+agentic-config-folding	agentic.txt	/*agentic-config-folding*
 agentic-config-headers	agentic.txt	/*agentic-config-headers*
 agentic-config-hooks	agentic.txt	/*agentic-config-hooks*
 agentic-config-provider	agentic.txt	/*agentic-config-provider*

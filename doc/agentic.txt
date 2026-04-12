@@ -290,6 +290,32 @@ settings ~
                        window after submitting a prompt.
                        Default: `true`.
 
+                                           *agentic-config-folding*
+folding ~
+  Type: `table`
+
+  Configure native folds for tool call responses in the chat buffer.
+
+  `tool_calls.enabled`            Master switch. Default: `true`.
+  `tool_calls.closed_by_default`  Family default for whether completed
+                                  tool responses start closed.
+                                  Default: `true`.
+  `tool_calls.min_lines`          Default body-line threshold for
+                                  completed responses to start
+                                  closed. Default: `20`.
+
+  Kind overrides live under `tool_calls.kinds.<kind>` and inherit the
+  family defaults when omitted:
+
+  `fetch.closed_by_default`       Default: `true`.
+  `fetch.min_lines`               Default: `8`.
+  `execute.closed_by_default`     Default: `true`.
+  `execute.min_lines`             Default: `12`.
+  `edit.closed_by_default`        Default: `false`.
+
+  Failed responses are foldable too, but they start open by default.
+  In-progress responses stay open until they complete or fail.
+
                                           *agentic-config-hooks*
 hooks ~
   Type: `table`
