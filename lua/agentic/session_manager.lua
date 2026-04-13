@@ -158,11 +158,6 @@ function SessionManager:new(tab_page_id)
     self.widget:set_on_before_hide(function()
         self.chat_folds:remember_visible_window_states()
     end)
-    self.widget:set_on_after_show(function(chat_winid)
-        if chat_winid and vim.api.nvim_win_is_valid(chat_winid) then
-            self.chat_folds:on_buf_win_enter(chat_winid)
-        end
-    end)
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.status_animation:start("busy")
 

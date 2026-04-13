@@ -38,7 +38,6 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field current_position agentic.UserConfig.Windows.Position
 --- @field on_submit_input fun(prompt: string): boolean external callback to be called when user submits the input
---- @field _on_after_show? fun(chat_winid: integer|nil)
 --- @field _on_before_hide? fun()
 --- @field _is_hiding? boolean
 local ChatWidget = {}
@@ -81,11 +80,6 @@ function ChatWidget:set_on_before_hide(callback)
     self._on_before_hide = callback
 end
 
---- @param callback fun(chat_winid: integer|nil)|nil
-function ChatWidget:set_on_after_show(callback)
-    self._on_after_show = callback
-end
-
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function ChatWidget:show(opts)
     opts = opts or {}
@@ -97,10 +91,6 @@ function ChatWidget:show(opts)
         focus_prompt = opts.focus_prompt,
         position = self.current_position,
     })
-
-    if self._on_after_show then
-        self._on_after_show(self.win_nrs.chat)
-    end
 end
 
 --- @param layouts agentic.UserConfig.Windows.Position[]|nil

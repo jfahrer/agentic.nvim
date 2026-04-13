@@ -143,22 +143,6 @@ describe("agentic.ui.ChatWidget", function()
                 assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.chat))
             end)
 
-            it(
-                "show() calls the on_after_show callback with the chat window",
-                function()
-                    local after_show_spy = spy.new(function() end)
-                    widget:set_on_after_show(after_show_spy)
-
-                    widget:show({ focus_prompt = false })
-
-                    assert.spy(after_show_spy).was.called(1)
-                    assert.equal(
-                        widget.win_nrs.chat,
-                        after_show_spy.calls[1][1]
-                    )
-                end
-            )
-
             it("hide() is safe when called multiple times", function()
                 widget:show()
                 widget:hide()
